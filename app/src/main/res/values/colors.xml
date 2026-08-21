@@ -1,0 +1,7 @@
+<resources>
+    <color name="plex_gold">#E5A00D</color>
+    <color name="plex_dark">#282A2D</color>
+    <color name="bubble_background">#CC282A2D</color>
+    <color name="star_filled">#E5A00D</color>
+    <color name="star_empty">#66FFFFFF</color>
+</resources>

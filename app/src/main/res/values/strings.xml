@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">PlexBubble</string>
+    <string name="notification_channel_bubble">Rating Bubble</string>
+    <string name="notification_bubble_active_title">Plex Rating Bubble is active</string>
+    <string name="notification_bubble_active_text">Tap the floating bubble to rate the current track</string>
+    <string name="action_stop_bubble">Stop</string>
+</resources>
