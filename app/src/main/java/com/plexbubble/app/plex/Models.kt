@@ -25,10 +25,13 @@ data class PlexResource(
 
 /** A currently active playback session reported by a Plex Media Server. */
 data class PlexSession(
+    val sessionId: String?,
     val ratingKey: String,
     val title: String,
     val grandparentTitle: String?,
     val parentTitle: String?,
+    val thumbPath: String?,
+    val year: Int?,
     val durationMs: Long?,
     val userRating: Float?
 )
@@ -38,8 +41,11 @@ data class NowPlayingMetadata(
     val title: String?,
     val artist: String?,
     val album: String?,
+    val year: Int?,
     val durationMs: Long?,
-    val isPlaying: Boolean
+    val isPlaying: Boolean,
+    val playbackState: Int? = null,
+    val accentColorArgb: Int? = null
 )
 
 /** A now-playing track resolved to a Plex ratingKey, ready to be rated. */
