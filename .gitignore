@@ -7,3 +7,5 @@ local.properties
 .externalNativeBuild/
 .cxx/
 .DS_Store
+*.png
+*.PNG
