@@ -11,6 +11,7 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.media.session.PlaybackState
+import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.runtime.getValue
@@ -63,14 +64,16 @@ class BubbleOverlayService : LifecycleService() {
     private val nowPlayingRepository = NowPlayingRepository()
     private val ratingRepository = PlexRatingRepository()
 
-    private var bubbleAlphaState by mutableStateOf(0.45f)
-    private var transparencyPercentState by mutableStateOf(45)
+    private var bubbleAlphaState by mutableStateOf(1f)
     private var panelVisibleState by mutableStateOf(false)
     private var trackTitleState by mutableStateOf<String?>(null)
     private var trackArtistState by mutableStateOf<String?>(null)
     private var trackAlbumState by mutableStateOf<String?>(null)
     private var trackYearState by mutableStateOf<Int?>(null)
     private var isPlayingState by mutableStateOf(false)
+    private var playbackPositionMsState by mutableStateOf<Long?>(null)
+    private var playbackPositionUpdatedAtMsState by mutableStateOf<Long?>(null)
+    private var trackDurationMsState by mutableStateOf<Long?>(null)
     private var ratingState by mutableStateOf(0f)
     private var statusMessageState by mutableStateOf<String?>(null)
     private var panelAccentColorState by mutableStateOf(Color(0xFFE5A00D))
@@ -84,17 +87,11 @@ class BubbleOverlayService : LifecycleService() {
     private var ratingCacheLoaded = false
     private var currentTrackFingerprint: String? = null
     private var currentTrackThumbPath: String? = null
-    private var pendingUndoState by mutableStateOf<PendingUndo?>(null)
     private var pendingRatingSubmitJob: Job? = null
+    private var trackResolutionJob: Job? = null
+    private var trackResolutionVersion = 0L
     private var baseUrl: String = ""
     private var authToken: String? = null
-
-    private data class PendingUndo(
-        val ratingKey: String,
-        val previousStars0to5: Float,
-        val expiresAtMs: Long,
-        val fingerprint: String?
-    )
 
     override fun onCreate() {
         super.onCreate()
@@ -104,6 +101,12 @@ class BubbleOverlayService : LifecycleService() {
         overlayLifecycleOwner.onCreate()
         overlayLifecycleOwner.onStart()
         overlayLifecycleOwner.onResume()
+
+        if (!Settings.canDrawOverlays(this)) {
+            lifecycleScope.launch { settingsStore.addDiagnosticEvent("overlay:permission_missing") }
+            stopSelf()
+            return
+        }
 
         startForeground(NOTIFICATION_ID, buildForegroundNotification())
         addBubbleWindow()
@@ -187,7 +190,11 @@ class BubbleOverlayService : LifecycleService() {
             val (savedX, savedY) = settingsStoreBubblePositionOrDefault()
             bubbleLayoutParams.x = savedX
             bubbleLayoutParams.y = savedY
-            windowManager.addView(bubbleView, bubbleLayoutParams)
+            runCatching { windowManager.addView(bubbleView, bubbleLayoutParams) }
+                .onFailure {
+                    lifecycleScope.launch { settingsStore.addDiagnosticEvent("overlay:add_failed") }
+                    stopSelf()
+                }
         }
     }
 
@@ -238,6 +245,9 @@ class BubbleOverlayService : LifecycleService() {
                     trackYear = trackYearState,
                     trackArtUrl = currentTrackArtUrlState,
                     isPlaying = isPlayingState,
+                    playbackPositionMs = playbackPositionMsState,
+                    playbackPositionUpdatedAtMs = playbackPositionUpdatedAtMsState,
+                    durationMs = trackDurationMsState,
                     rating = ratingState,
                     onRatingPreview = ::previewRating,
                     onRatingCommit = ::submitRating,
@@ -248,10 +258,6 @@ class BubbleOverlayService : LifecycleService() {
                     onSeekBack = { seekBy(-10_000L) },
                     ratingPresets = ratingPresetsState,
                     onPresetRating = ::submitRating,
-                    onUndoLastRating = ::undoLastRating,
-                    canUndo = pendingUndoState?.expiresAtMs?.let { it > System.currentTimeMillis() } == true,
-                    transparencyPercent = transparencyPercentState,
-                    onTransparencyChange = ::onTransparencyChanged,
                     showRecentRatings = showRecentRatingsState,
                     recentRatings = recentRatingsState,
                     onClose = { togglePanel() },
@@ -269,9 +275,11 @@ class BubbleOverlayService : LifecycleService() {
             gravity = Gravity.TOP or Gravity.START
             x = bubbleLayoutParams.x
             y = bubbleLayoutParams.y + 140
+            alpha = 0f
         }
         windowManager.addView(view, params)
         view.post {
+            params.alpha = 1f
             positionPanelWithinScreen(view, params)
         }
         panelView = view
@@ -308,7 +316,9 @@ class BubbleOverlayService : LifecycleService() {
 
         params.x = preferredX.coerceIn(0, maxX)
         params.y = preferredY.coerceIn(0, maxY)
-        runCatchingSilently { windowManager.updateViewLayout(view, params) }
+        if (view.isAttachedToWindow) {
+            runCatchingSilently { windowManager.updateViewLayout(view, params) }
+        }
     }
 
     private fun removePanelWindow() {
@@ -317,15 +327,9 @@ class BubbleOverlayService : LifecycleService() {
         panelLayoutParams = null
     }
 
-    // --- Settings / transparency -------------------------------------------
+    // --- Settings -----------------------------------------------------------
 
     private fun observeSettings() {
-        lifecycleScope.launch {
-            settingsStore.transparencyPercent.distinctUntilChanged().collectLatest { percent ->
-                transparencyPercentState = percent
-                bubbleAlphaState = (percent / 100f).coerceIn(0.05f, 1f)
-            }
-        }
         lifecycleScope.launch {
             settingsStore.ratingPresets.distinctUntilChanged().collectLatest { presets ->
                 ratingPresetsState = presets
@@ -336,12 +340,6 @@ class BubbleOverlayService : LifecycleService() {
                 showRecentRatingsState = enabled
             }
         }
-    }
-
-    private fun onTransparencyChanged(percent: Int) {
-        transparencyPercentState = percent
-        bubbleAlphaState = (percent / 100f).coerceIn(0.05f, 1f)
-        lifecycleScope.launch { settingsStore.setTransparencyPercent(percent) }
     }
 
     // --- Now playing / rating ------------------------------------------------
@@ -366,8 +364,17 @@ class BubbleOverlayService : LifecycleService() {
                 trackAlbumState = metadata.album
                 trackYearState = metadata.year
                 isPlayingState = metadata.isPlaying
+                playbackPositionMsState = metadata.playbackPositionMs
+                playbackPositionUpdatedAtMsState = metadata.playbackPositionUpdatedAtMs
+                trackDurationMsState = metadata.durationMs
                 panelAccentColorState = metadata.accentColorArgb?.let { Color(it) } ?: Color(0xFFE5A00D)
-                if (panelVisibleState) {
+                val fingerprint = buildTrackFingerprint(metadata.title, metadata.artist, metadata.durationMs)
+                if (fingerprint != currentTrackFingerprint) {
+                    currentTrackFingerprint = fingerprint
+                    resolvedRatingKey = null
+                    ratingState = 0f
+                    currentTrackThumbPath = null
+                    currentTrackArtUrlState = null
                     resolveRatingKeyAndPrefillRating(metadata.title, metadata.artist, metadata.album, metadata.year, metadata.durationMs)
                 }
             }
@@ -379,7 +386,10 @@ class BubbleOverlayService : LifecycleService() {
         val state = metadata?.playbackState
         val stopped = metadata == null || state == PlaybackState.STATE_STOPPED || state == PlaybackState.STATE_NONE
         if (!stopped) {
-            resolveRatingKeyAndPrefillRating(metadata.title, metadata.artist, metadata.album, metadata.year, metadata.durationMs)
+            val fingerprint = buildTrackFingerprint(metadata.title, metadata.artist, metadata.durationMs)
+            if (resolvedRatingKey == null && currentTrackFingerprint == fingerprint) {
+                resolveRatingKeyAndPrefillRating(metadata.title, metadata.artist, metadata.album, metadata.year, metadata.durationMs)
+            }
         } else {
             clearNowPlayingState()
             statusMessageState = "Waiting for Plexamp playback..."
@@ -387,46 +397,58 @@ class BubbleOverlayService : LifecycleService() {
     }
 
     private fun resolveRatingKeyAndPrefillRating(title: String?, artist: String?, album: String?, year: Int?, durationMs: Long?) {
-        lifecycleScope.launch {
+        val fingerprint = buildTrackFingerprint(title, artist, durationMs)
+        val resolutionVersion = ++trackResolutionVersion
+        trackResolutionJob?.cancel()
+        trackResolutionJob = lifecycleScope.launch {
             ensureRatingCacheLoaded()
             val resolvedBase = currentBaseUrl()
             val token = currentAuthToken()
             if (resolvedBase.isNullOrBlank() || token.isNullOrBlank()) {
-                statusMessageState = "Sign in to Plex from the app first"
-                settingsStore.addDiagnosticEvent("resolve:missing_auth_or_base")
+                if (isCurrentResolution(fingerprint, resolutionVersion)) {
+                    statusMessageState = "Sign in to Plex from the app first"
+                    settingsStore.addDiagnosticEvent("resolve:missing_auth_or_base")
+                }
                 return@launch
             }
-            val sessions = nowPlayingRepository.fetchActiveSessions(resolvedBase, token).getOrNull().orEmpty()
             val metadata = NowPlayingMetadata(title, artist, album, year, durationMs, true)
-            val match = nowPlayingRepository.matchSession(metadata, sessions)
-            if (match != null) {
-                resolvedRatingKey = match.ratingKey
-                var resolvedAlbum = album ?: match.parentTitle
-                var resolvedYear = year ?: match.year
-                if (resolvedAlbum.isNullOrBlank() || resolvedYear == null) {
-                    val context = nowPlayingRepository.fetchTrackContext(resolvedBase, token, match.ratingKey).getOrNull()
-                    if (resolvedAlbum.isNullOrBlank()) resolvedAlbum = context?.album
-                    if (resolvedYear == null) resolvedYear = context?.year
+            delay(TRACK_CHANGE_SETTLE_DELAY_MS)
+            repeat(MAX_SESSION_MATCH_ATTEMPTS) { attempt ->
+                val sessions = nowPlayingRepository.fetchActiveSessions(resolvedBase, token).getOrNull().orEmpty()
+                val match = nowPlayingRepository.matchSession(metadata, sessions)
+                if (match != null) {
+                    var resolvedAlbum = album ?: match.parentTitle
+                    var resolvedYear = year ?: match.year
+                    if (resolvedAlbum.isNullOrBlank() || resolvedYear == null) {
+                        val context = nowPlayingRepository.fetchTrackContext(resolvedBase, token, match.ratingKey).getOrNull()
+                        if (resolvedAlbum.isNullOrBlank()) resolvedAlbum = context?.album
+                        if (resolvedYear == null) resolvedYear = context?.year
+                    }
+                    if (!isCurrentResolution(fingerprint, resolutionVersion)) return@launch
+
+                    resolvedRatingKey = match.ratingKey
+                    trackAlbumState = resolvedAlbum
+                    trackYearState = resolvedYear
+                    currentTrackThumbPath = match.thumbPath
+                    currentTrackArtUrlState = buildMediaUrl(resolvedBase, token, match.thumbPath)
+                    ratingState = cachedRatingByKey[match.ratingKey] ?: (match.userRating ?: 0f) / 2f
+                    statusMessageState = null
+                    settingsStore.addDiagnosticEvent("resolve:matched")
+                    return@launch
                 }
-                trackAlbumState = resolvedAlbum
-                trackYearState = resolvedYear
-                currentTrackFingerprint = buildTrackFingerprint(title, artist, durationMs)
-                currentTrackThumbPath = match.thumbPath
-                currentTrackArtUrlState = buildMediaUrl(resolvedBase, token, match.thumbPath)
-                ratingState = cachedRatingByKey[match.ratingKey] ?: (match.userRating ?: 0f) / 2f
-                statusMessageState = null
-                settingsStore.addDiagnosticEvent("resolve:matched")
-            } else {
-                resolvedRatingKey = null
-                trackAlbumState = album
-                trackYearState = year
-                currentTrackThumbPath = null
-                currentTrackArtUrlState = null
+
+                if (attempt < MAX_SESSION_MATCH_ATTEMPTS - 1) delay(TRACK_MATCH_RETRY_DELAY_MS)
+            }
+
+            if (isCurrentResolution(fingerprint, resolutionVersion)) {
                 statusMessageState = "Couldn't match this track in your Plex library yet"
                 settingsStore.addDiagnosticEvent("resolve:no_match")
             }
         }
     }
+
+    private fun isCurrentResolution(fingerprint: String, resolutionVersion: Long): Boolean =
+        currentTrackFingerprint == fingerprint && trackResolutionVersion == resolutionVersion
 
     private fun submitRating(newStarRating: Float) {
         ratingState = newStarRating
@@ -435,8 +457,8 @@ class BubbleOverlayService : LifecycleService() {
             delay(300)
             val nowMetadata = PlexampNotificationListener.nowPlaying.value
             val nowFingerprint = buildTrackFingerprint(nowMetadata?.title, nowMetadata?.artist, nowMetadata?.durationMs)
-            if (currentTrackFingerprint != null && nowFingerprint != null && nowFingerprint != currentTrackFingerprint) {
-                statusMessageState = "Track changed - reopen panel before rating"
+            if (currentTrackFingerprint != null && nowFingerprint != currentTrackFingerprint) {
+                statusMessageState = "Track changed - wait a moment, then retry"
                 settingsStore.addDiagnosticEvent("rate:blocked_track_changed")
                 return@launch
             }
@@ -448,7 +470,6 @@ class BubbleOverlayService : LifecycleService() {
             }
 
             ensureRatingCacheLoaded()
-            val previousStars = cachedRatingByKey[ratingKey] ?: ratingState
             val resolvedBase = currentBaseUrl() ?: return@launch
             val token = currentAuthToken() ?: return@launch
             val result = ratingRepository.rateTrack(resolvedBase, token, ratingKey, newStarRating * 2f)
@@ -466,18 +487,6 @@ class BubbleOverlayService : LifecycleService() {
                     )
                 )
                 refreshRecentRatingsState()
-                pendingUndoState = PendingUndo(
-                    ratingKey = ratingKey,
-                    previousStars0to5 = previousStars,
-                    expiresAtMs = System.currentTimeMillis() + 5000,
-                    fingerprint = currentTrackFingerprint
-                )
-                lifecycleScope.launch {
-                    kotlinx.coroutines.delay(5100)
-                    if (pendingUndoState?.expiresAtMs?.let { it <= System.currentTimeMillis() } == true) {
-                        pendingUndoState = null
-                    }
-                }
                 statusMessageState = "Rating saved"
                 lifecycleScope.launch {
                     kotlinx.coroutines.delay(3000)
@@ -497,34 +506,6 @@ class BubbleOverlayService : LifecycleService() {
     private fun previewRating(newStarRating: Float) {
         ratingState = newStarRating
         pendingRatingSubmitJob?.cancel()
-    }
-
-    private fun undoLastRating() {
-        val undo = pendingUndoState ?: return
-        if (undo.expiresAtMs <= System.currentTimeMillis()) {
-            pendingUndoState = null
-            statusMessageState = "Undo window expired"
-            return
-        }
-        val key = undo.ratingKey
-        lifecycleScope.launch {
-            val resolvedBase = currentBaseUrl() ?: return@launch
-            val token = currentAuthToken() ?: return@launch
-            val result = ratingRepository.rateTrack(resolvedBase, token, key, undo.previousStars0to5 * 2f)
-            if (result.isSuccess) {
-                ratingState = undo.previousStars0to5
-                cachedRatingByKey[key] = undo.previousStars0to5
-                settingsStore.setCachedRating(key, undo.previousStars0to5)
-                pendingUndoState = null
-                statusMessageState = "Undo applied"
-                settingsStore.addDiagnosticEvent("rate:undo_success")
-            } else {
-                queuePendingRating(key, undo.previousStars0to5)
-                pendingUndoState = null
-                statusMessageState = "Undo queued for retry"
-                settingsStore.addDiagnosticEvent("rate:undo_queued")
-            }
-        }
     }
 
     private suspend fun ensureRatingCacheLoaded() {
@@ -646,12 +627,18 @@ class BubbleOverlayService : LifecycleService() {
         trackAlbumState = null
         trackYearState = null
         isPlayingState = false
+        playbackPositionMsState = null
+        playbackPositionUpdatedAtMsState = null
+        trackDurationMsState = null
         ratingState = 0f
         resolvedRatingKey = null
         currentTrackFingerprint = null
         currentTrackThumbPath = null
         currentTrackArtUrlState = null
         panelAccentColorState = Color(0xFFE5A00D)
+        trackResolutionJob?.cancel()
+        trackResolutionJob = null
+        trackResolutionVersion++
     }
 
     private suspend fun currentBaseUrl(): String? {
@@ -712,6 +699,9 @@ class BubbleOverlayService : LifecycleService() {
     companion object {
         private const val CHANNEL_ID = "bubble_service_channel"
         private const val NOTIFICATION_ID = 1001
+        private const val TRACK_CHANGE_SETTLE_DELAY_MS = 350L
+        private const val TRACK_MATCH_RETRY_DELAY_MS = 250L
+        private const val MAX_SESSION_MATCH_ATTEMPTS = 3
         const val ACTION_STOP = "com.plexbubble.app.action.STOP_BUBBLE"
     }
 }

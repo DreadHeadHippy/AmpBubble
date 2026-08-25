@@ -1,8 +1,7 @@
 package com.plexbubble.app.overlay
 
+import android.os.SystemClock
 import androidx.compose.ui.platform.LocalViewConfiguration
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -15,6 +14,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,8 +29,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -39,9 +37,8 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.foundation.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
@@ -66,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import com.plexbubble.app.R
 import coil.compose.AsyncImage
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 data class RecentRatingItemUi(
@@ -94,7 +92,7 @@ fun BubbleContent(bubbleAlpha: Float, sizeDp: Int = 56, modifier: Modifier = Mod
     }
 }
 
-/** Expanded panel: current track, star rating, and a transparency slider. */
+/** Expanded panel: current track, playback controls, and star rating. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RatingPanelContent(
@@ -106,6 +104,9 @@ fun RatingPanelContent(
     trackYear: Int?,
     trackArtUrl: String?,
     isPlaying: Boolean,
+    playbackPositionMs: Long?,
+    playbackPositionUpdatedAtMs: Long?,
+    durationMs: Long?,
     rating: Float,
     onRatingPreview: (Float) -> Unit,
     onRatingCommit: (Float) -> Unit,
@@ -116,16 +117,11 @@ fun RatingPanelContent(
     onSeekBack: () -> Unit,
     ratingPresets: List<Float>,
     onPresetRating: (Float) -> Unit,
-    onUndoLastRating: () -> Unit,
-    canUndo: Boolean,
-    transparencyPercent: Int,
-    onTransparencyChange: (Int) -> Unit,
     showRecentRatings: Boolean,
     recentRatings: List<RecentRatingItemUi>,
     onClose: () -> Unit,
     statusMessage: String? = null
 ) {
-    var showAdvanced by remember { mutableStateOf(false) }
     var introAnimated by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         introAnimated = true
@@ -163,30 +159,13 @@ fun RatingPanelContent(
             )
             .padding(16.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height((4 * panelScale).dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            accentColor.copy(alpha = 0f),
-                            accentColor.copy(alpha = 0.72f),
-                            accentColor.copy(alpha = 0f)
-                        )
-                    )
-                )
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .size(88.dp)
+                    .clip(RoundedCornerShape(18.dp))
                     .background(Color(0xFF0D0E11))
-                    .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(12.dp)),
+                    .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(18.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
@@ -196,11 +175,11 @@ fun RatingPanelContent(
                     placeholder = painterResource(id = R.drawable.bubble_logo_readable),
                     error = painterResource(id = R.drawable.bubble_logo_readable),
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(86.dp)
+                        .clip(RoundedCornerShape(17.dp))
                 )
             }
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = trackTitle ?: "Nothing playing",
@@ -258,7 +237,15 @@ fun RatingPanelContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        PlaybackProgressIndicator(
+            playbackPositionMs = playbackPositionMs,
+            playbackPositionUpdatedAtMs = playbackPositionUpdatedAtMs,
+            durationMs = durationMs,
+            isPlaying = isPlaying,
+            accentColor = accentColor
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -339,132 +326,147 @@ fun RatingPanelContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(accentColor.copy(alpha = 0.15f))
-                .border(1.dp, accentColor.copy(alpha = 0.28f), RoundedCornerShape(12.dp))
-                .clickable { showAdvanced = !showAdvanced }
-                .padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        if (showRecentRatings && recentRatings.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Advanced",
-                color = Color(0xFFE7E9F0),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
+                text = "Recent",
+                color = Color(0xFFB8BCC7),
+                style = MaterialTheme.typography.labelSmall
             )
-            Icon(
-                imageVector = if (showAdvanced) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                contentDescription = null,
-                tint = accentColor
-            )
-        }
-
-        if (showAdvanced) {
-            Column(modifier = Modifier.padding(top = 12.dp)) {
-                Text(
-                    text = "Bubble transparency",
-                    color = Color(0xFFB8BCC7),
-                    style = MaterialTheme.typography.labelSmall
-                )
-                Slider(
-                    value = transparencyPercent.toFloat(),
-                    onValueChange = { onTransparencyChange(it.toInt()) },
-                    valueRange = 5f..100f
-                )
-
-                if (showRecentRatings && recentRatings.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
+            recentRatings.take(3).forEach { item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AsyncImage(
+                        model = item.artUrl,
+                        contentDescription = "Recent track art",
+                        contentScale = ContentScale.Crop,
+                        placeholder = painterResource(id = R.drawable.bubble_logo_readable),
+                        error = painterResource(id = R.drawable.bubble_logo_readable),
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = item.title,
+                            color = Color(0xFFDDE1EB),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = item.artist ?: "Unknown artist",
+                            color = Color(0xFFB8BCC7),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Recent",
+                        text = formatStarRating(item.stars0to5),
                         color = Color(0xFFB8BCC7),
                         style = MaterialTheme.typography.labelSmall
                     )
-                    recentRatings.take(3).forEach { item ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            AsyncImage(
-                                model = item.artUrl,
-                                contentDescription = "Recent track art",
-                                contentScale = ContentScale.Crop,
-                                placeholder = painterResource(id = R.drawable.bubble_logo_readable),
-                                error = painterResource(id = R.drawable.bubble_logo_readable),
-                                modifier = Modifier
-                                    .size(26.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = item.title,
-                                    color = Color(0xFFDDE1EB),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = item.artist ?: "Unknown artist",
-                                    color = Color(0xFFB8BCC7),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "${item.stars0to5}/5",
-                                color = Color(0xFFB8BCC7),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
                 }
             }
         }
 
-        AnimatedVisibility(visible = canUndo) {
-            TextButton(onClick = onUndoLastRating) {
-                Text("Undo last rating", color = accentColor)
-            }
-        }
-
-        AnimatedVisibility(visible = saveConfirmed) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 10.dp)
+        if (statusMessage != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .padding(top = 10.dp),
+                contentAlignment = Alignment.CenterStart
             ) {
-                Icon(Icons.Filled.Verified, contentDescription = null, tint = Color(0xFF39D98A), modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Saved to Plex",
-                    color = Color(0xFF9DF0C7),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-
-        if (statusMessage != null && statusMessage != "Rating saved") {
-            Spacer(modifier = Modifier.height(6.dp))
-            AnimatedContent(targetState = statusMessage, label = "statusMessage") { message ->
-                Text(
-                    text = message,
-                    color = Color(0xFFD5D9E3),
-                    style = MaterialTheme.typography.labelSmall
-                )
+                if (saveConfirmed) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Verified, contentDescription = null, tint = Color(0xFF39D98A), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Saved to Plex",
+                            color = Color(0xFF9DF0C7),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    Text(
+                        text = statusMessage,
+                        color = Color(0xFFD5D9E3),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
             }
         }
 
     }
+}
+
+@Composable
+private fun PlaybackProgressIndicator(
+    playbackPositionMs: Long?,
+    playbackPositionUpdatedAtMs: Long?,
+    durationMs: Long?,
+    isPlaying: Boolean,
+    accentColor: Color
+) {
+    if (playbackPositionMs == null || durationMs == null || durationMs <= 0L) return
+
+    var displayedPositionMs by remember(playbackPositionMs, playbackPositionUpdatedAtMs, isPlaying) {
+        mutableStateOf(playbackPositionMs)
+    }
+    LaunchedEffect(playbackPositionMs, playbackPositionUpdatedAtMs, isPlaying, durationMs) {
+        while (isPlaying) {
+            val updatedAt = playbackPositionUpdatedAtMs ?: SystemClock.elapsedRealtime()
+            displayedPositionMs = (playbackPositionMs + SystemClock.elapsedRealtime() - updatedAt)
+                .coerceIn(0L, durationMs)
+            delay(500)
+        }
+    }
+    if (!isPlaying) displayedPositionMs = playbackPositionMs.coerceIn(0L, durationMs)
+
+    val progress = (displayedPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        val showLabels = maxWidth >= 260.dp
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (showLabels) {
+                Text(
+                    text = formatPlaybackTime(displayedPositionMs),
+                    color = Color(0xFFB8BCC7),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            LinearProgressIndicator(
+                progress = { progress },
+                color = accentColor,
+                trackColor = Color(0x33FFFFFF),
+                modifier = Modifier.weight(1f).height(3.dp)
+            )
+            if (showLabels) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = formatPlaybackTime(durationMs),
+                    color = Color(0xFFB8BCC7),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+private fun formatPlaybackTime(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
+    return "%d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
 }
 
 @OptIn(ExperimentalFoundationApi::class)

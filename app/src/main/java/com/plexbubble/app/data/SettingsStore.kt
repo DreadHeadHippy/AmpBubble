@@ -34,11 +34,10 @@ data class RatedTrackRecord(
     val timestampMs: Long
 )
 
-/** Non-secret app settings (transparency, bubble position, manual server override toggle). */
+/** Non-secret app settings (bubble position and manual server override toggle). */
 class SettingsStore(private val context: Context) {
 
     private object Keys {
-        val TRANSPARENCY_PERCENT = intPreferencesKey("transparency_percent")
         val BUBBLE_X = intPreferencesKey("bubble_x")
         val BUBBLE_Y = intPreferencesKey("bubble_y")
         val USE_MANUAL_SERVER = booleanPreferencesKey("use_manual_server")
@@ -52,14 +51,6 @@ class SettingsStore(private val context: Context) {
         val DIAGNOSTIC_LOG_JSON = stringPreferencesKey("diagnostic_log_json")
         val RATING_PRESETS_CSV = stringPreferencesKey("rating_presets_csv")
         val SHOW_RECENT_IN_BUBBLE = booleanPreferencesKey("show_recent_in_bubble")
-        val TRANSPARENCY_DEFAULT = 45f
-    }
-
-    val transparencyPercent: Flow<Int> =
-        context.dataStore.data.map { it[Keys.TRANSPARENCY_PERCENT] ?: Keys.TRANSPARENCY_DEFAULT.toInt() }
-
-    suspend fun setTransparencyPercent(value: Int) {
-        context.dataStore.edit { it[Keys.TRANSPARENCY_PERCENT] = value.coerceIn(5, 100) }
     }
 
     val bubblePosition: Flow<Pair<Int, Int>> =
@@ -255,7 +246,6 @@ class SettingsStore(private val context: Context) {
     suspend fun exportSettingsSnapshot(): String {
         val prefs = context.dataStore.data.first()
         return JSONObject()
-            .put("transparency_percent", prefs[Keys.TRANSPARENCY_PERCENT] ?: Keys.TRANSPARENCY_DEFAULT.toInt())
             .put("bubble_x", prefs[Keys.BUBBLE_X] ?: 0)
             .put("bubble_y", prefs[Keys.BUBBLE_Y] ?: 200)
             .put("use_manual_server", prefs[Keys.USE_MANUAL_SERVER] ?: false)
@@ -274,7 +264,6 @@ class SettingsStore(private val context: Context) {
     suspend fun importSettingsSnapshot(snapshotJson: String): Result<Unit> = runCatching {
         val json = JSONObject(snapshotJson)
         context.dataStore.edit { prefs ->
-            if (json.has("transparency_percent")) prefs[Keys.TRANSPARENCY_PERCENT] = json.optInt("transparency_percent", 45).coerceIn(5, 100)
             if (json.has("bubble_x")) prefs[Keys.BUBBLE_X] = json.optInt("bubble_x", 0)
             if (json.has("bubble_y")) prefs[Keys.BUBBLE_Y] = json.optInt("bubble_y", 200)
             if (json.has("use_manual_server")) prefs[Keys.USE_MANUAL_SERVER] = json.optBoolean("use_manual_server", false)

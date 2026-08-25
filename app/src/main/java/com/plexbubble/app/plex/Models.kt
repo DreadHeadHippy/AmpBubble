@@ -45,6 +45,8 @@ data class NowPlayingMetadata(
     val durationMs: Long?,
     val isPlaying: Boolean,
     val playbackState: Int? = null,
+    val playbackPositionMs: Long? = null,
+    val playbackPositionUpdatedAtMs: Long? = null,
     val accentColorArgb: Int? = null
 )
 

@@ -105,14 +105,24 @@ class MainActivity : ComponentActivity() {
         CustomTabsIntent.Builder().build().launchUrl(this, Uri.parse(url))
     }
 
-    private fun toggleBubbleService(enabled: Boolean) {
+    private fun toggleBubbleService(enabled: Boolean): Boolean {
         val intent = Intent(this, BubbleOverlayService::class.java)
         if (enabled) {
+            if (!Settings.canDrawOverlays(this)) {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+                return false
+            }
             ContextCompat.startForegroundService(this, intent)
         } else {
             intent.action = BubbleOverlayService.ACTION_STOP
             ContextCompat.startForegroundService(this, intent)
         }
+        return enabled
     }
 }
 
@@ -125,7 +135,7 @@ private fun MainScreen(
     isNotificationAccessGranted: () -> Boolean,
     openNotificationAccessSettings: () -> Unit,
     openAuthTab: (String) -> Unit,
-    onToggleBubble: (Boolean) -> Unit
+    onToggleBubble: (Boolean) -> Boolean
 ) {
     val scope = rememberCoroutineScope()
     val clientIdentifier = remember { mutableStateOf("") }
@@ -328,9 +338,8 @@ private fun MainScreen(
                         )
                     }
                     Switch(checked = bubbleEnabled, onCheckedChange = { checked ->
-                        bubbleEnabled = checked
-                        onToggleBubble(checked)
-                        scope.launch { settingsStore.setBubbleEnabled(checked) }
+                        bubbleEnabled = onToggleBubble(checked)
+                        scope.launch { settingsStore.setBubbleEnabled(bubbleEnabled) }
                     })
                 }
             }
@@ -347,7 +356,7 @@ private fun MainScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Show recent ratings in bubble (advanced)", color = Color(0xFFD6DAE5))
+                        Text("Show recent rating", color = Color(0xFFD6DAE5))
                         Switch(
                             checked = showRecentInBubble,
                             onCheckedChange = { checked ->

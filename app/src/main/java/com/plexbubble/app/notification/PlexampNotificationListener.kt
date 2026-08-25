@@ -21,11 +21,11 @@ class PlexampNotificationListener : NotificationListenerService() {
     private var controller: MediaController? = null
     private val controllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: android.media.MediaMetadata?) {
-            publishMetadata(metadata, controller?.playbackState?.state)
+            publishMetadata(metadata, controller?.playbackState)
         }
 
         override fun onPlaybackStateChanged(state: android.media.session.PlaybackState?) {
-            publishMetadata(controller?.metadata, state?.state)
+            publishMetadata(controller?.metadata, state)
         }
     }
 
@@ -43,7 +43,7 @@ class PlexampNotificationListener : NotificationListenerService() {
         if (activeController == null) activeController = controller
         publishMetadata(
             controller?.metadata,
-            controller?.playbackState?.state
+            controller?.playbackState
         )
     }
 
@@ -84,13 +84,14 @@ class PlexampNotificationListener : NotificationListenerService() {
         super.onDestroy()
     }
 
-    private fun publishMetadata(metadata: android.media.MediaMetadata?, playbackState: Int?) {
+    private fun publishMetadata(metadata: android.media.MediaMetadata?, playbackState: android.media.session.PlaybackState?) {
         if (metadata == null) {
             _nowPlaying.value = null
             return
         }
         val accentColor = extractAccentColor(metadata)
-        val playing = playbackState == android.media.session.PlaybackState.STATE_PLAYING
+        val playing = playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING
+        val playbackPosition = playbackState?.position?.takeIf { it >= 0L }
         _nowPlaying.value = NowPlayingMetadata(
             title = metadata.getString(android.media.MediaMetadata.METADATA_KEY_TITLE),
             artist = metadata.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST),
@@ -98,7 +99,9 @@ class PlexampNotificationListener : NotificationListenerService() {
             year = metadata.getLong(android.media.MediaMetadata.METADATA_KEY_YEAR).toInt().takeIf { it > 0 },
             durationMs = metadata.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION).takeIf { it > 0 },
             isPlaying = playing,
-            playbackState = playbackState,
+            playbackState = playbackState?.state,
+            playbackPositionMs = playbackPosition,
+            playbackPositionUpdatedAtMs = playbackState?.lastPositionUpdateTime?.takeIf { it > 0L },
             accentColorArgb = accentColor
         )
     }

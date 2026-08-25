@@ -1,15 +1,17 @@
 # PlexBubble
 
-PlexBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
+PlexBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a fully opaque floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
 
 ## What It Does
 
 - Shows an always-on-top floating bubble.
-- Expands into a panel with now-playing information from Plexamp notifications.
-- Lets you rate tracks with drag-friendly stars.
+- Expands into a panel with large now-playing album art and Plexamp metadata.
+- Lets you rate tracks with drag-friendly half stars and one haptic tick per selected or crossed half-star step.
 - Sends ratings to Plex Media Server using the Plex rating API.
 - Caches ratings locally and retries failed submissions later.
-- Keeps recent ratings and optional recent history in the panel.
+- Keeps recent ratings in local history and can show the latest three directly at the bottom of the panel.
+- Shows a compact, read-only playback progress bar with time labels when room allows.
+- Resolves the active Plex track and rating after each Plexamp track change, even when the panel is closed.
 - Supports manual server override for URL and token.
 - Uses secure encrypted token storage for Plex auth tokens.
 
@@ -18,7 +20,8 @@ PlexBubble is an Android overlay app that lets you rate the currently playing Pl
 - Playing state shows: Playing now.
 - Paused state shows: Paused.
 - Stopped/no active session shows: Nothing playing.
-- Long-press stop behavior was removed to match requested behavior and avoid non-Plexamp-like side effects.
+- The panel shows a read-only progress bar below now-playing information; it advances during playback and freezes when paused.
+- The panel opens above the bubble when space below is insufficient, avoiding a visible position jump near the bottom edge of the screen.
 
 ## Tech Stack
 
@@ -42,6 +45,7 @@ PlexBubble is an Android overlay app that lets you rate the currently playing Pl
 - Display over other apps: required for the floating bubble.
 - Notification access: required to read Plexamp metadata and playback state.
 - Foreground service + notifications: required to keep overlay service alive.
+- Vibration: used for half-star rating feedback.
 - Internet/network state: required for Plex API calls.
 
 See manifest details in [app/src/main/AndroidManifest.xml](app/src/main/AndroidManifest.xml).
@@ -75,6 +79,16 @@ Toolchain details:
 
 See [app/build.gradle.kts](app/build.gradle.kts).
 
+### Build a sideloadable APK on Windows
+
+Run this from the project root after Java 17 is available to Gradle:
+
+```powershell
+.\gradlew.bat assembleDebug
+```
+
+The debug-signed APK is created at `app\build\outputs\apk\debug\app-debug.apk`. Copy it to an Android 11+ phone and allow the file manager or browser to install unknown apps when Android prompts you.
+
 ## First-Time Setup
 
 1. Launch the app.
@@ -85,14 +99,16 @@ See [app/build.gradle.kts](app/build.gradle.kts).
 6. If discovery fails, use Manual server override with base URL and token.
 7. Enable Bubble.
 
+If overlay permission is missing when Bubble is enabled, the app opens Android's per-app overlay permission screen instead of starting the bubble.
+
 ## User Workflow
 
 1. Start playback in Plexamp.
 2. Tap the floating bubble to open the panel.
 3. Confirm track metadata and playback status.
-4. Drag or tap stars to rate.
+4. Drag or tap stars to rate; each half-star step produces one haptic tick.
 5. Optional: use preset ratings.
-6. Optional: undo recent rating within the short undo window.
+6. Enable `Show recent rating` in the app to display recent ratings at the bottom of the panel.
 
 ## Reliability and Data Behavior
 
@@ -100,6 +116,7 @@ See [app/build.gradle.kts](app/build.gradle.kts).
 - Failed rating submissions are added to a pending queue.
 - Pending queue is retried when service conditions allow.
 - Recent ratings are kept in local history.
+- Whole-number ratings display without a decimal, such as `5/5`.
 - Basic diagnostic events are stored for troubleshooting.
 
 ## Playback and Metadata Model
@@ -117,12 +134,13 @@ The app distinguishes between playing, paused, and stopped using MediaController
 - Verify overlay permission is granted.
 - Verify Bubble is enabled in the app.
 - Confirm foreground service notification is present.
+- Enabling Bubble without overlay permission should open Android's `Display over other apps` setting for PlexBubble.
 
 ### Track info does not update
 
 - Verify notification listener access is granted.
 - Confirm Plexamp is producing active media notifications.
-- Open the panel while playback is active to force matching refresh.
+- Wait briefly after a track change for the background Plex session match to complete.
 
 ### Ratings do not save
 

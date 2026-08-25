@@ -1,5 +1,7 @@
 package com.plexbubble.app.overlay
 
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -10,16 +12,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.StarHalf
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
-import androidx.compose.material.icons.filled.StarHalf
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -41,28 +45,41 @@ fun StarRatingControl(
     emptyColor: Color = Color(0x66FFFFFF)
 ) {
     val starCount = 5
+    val context = LocalContext.current
+    val vibrator = remember(context) {
+        context.getSystemService(Vibrator::class.java)
+    }
+    val emitRatingHaptic = {
+        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+    }
     Row(
         horizontalArrangement = Arrangement.SpaceEvenly,
         modifier = modifier
             .fillMaxWidth()
-            .pointerInput(Unit) {
+            .pointerInput(vibrator) {
             detectTapGestures { offset ->
                 val starWidthPx = size.width / starCount
                 val starIndex = (offset.x / starWidthPx).toInt().coerceIn(0, starCount - 1)
                 val withinStarFraction = (offset.x - starIndex * starWidthPx) / starWidthPx
                 val half = if (withinStarFraction < 0.5f) 0.5f else 1f
                 val newRating = (starIndex + half).coerceIn(0f, starCount.toFloat())
+                emitRatingHaptic()
                 onRatingPreview(newRating)
                 onRatingCommit(newRating)
             }
             }
-            .pointerInput(Unit) {
+            .pointerInput(vibrator) {
             var dragRating = rating
+            var lastHapticRating: Float? = null
             detectHorizontalDragGestures(
                 onHorizontalDrag = { change, _ ->
                     val starWidthPx = size.width / starCount
                     val raw = (change.position.x / starWidthPx).coerceIn(0f, starCount.toFloat())
                     val snapped = (ceil(raw * 2) / 2f).coerceIn(0f, starCount.toFloat())
+                    if (snapped != lastHapticRating) {
+                        emitRatingHaptic()
+                        lastHapticRating = snapped
+                    }
                     dragRating = snapped
                     onRatingPreview(snapped)
                 },
@@ -76,7 +93,7 @@ fun StarRatingControl(
             val starValue = rating - i
             val icon = when {
                 starValue >= 1f -> Icons.Filled.Star
-                starValue >= 0.5f -> Icons.Filled.StarHalf
+                starValue >= 0.5f -> Icons.AutoMirrored.Filled.StarHalf
                 else -> Icons.Filled.StarBorder
             }
             val tint = if (starValue > 0f) filledColor else emptyColor
@@ -101,6 +118,11 @@ fun StarRatingControl(
 
 @Composable
 fun RatingValueLabel(rating: Float, modifier: Modifier = Modifier) {
+    Text(text = formatStarRating(rating), color = Color(0xFFC8CDD9), modifier = modifier)
+}
+
+fun formatStarRating(rating: Float): String {
     val rounded = (rating * 2).roundToInt() / 2f
-    Text(text = "$rounded / 5", color = Color(0xFFC8CDD9), modifier = modifier)
+    val value = if (rounded % 1f == 0f) rounded.toInt().toString() else rounded.toString()
+    return "$value/5"
 }
