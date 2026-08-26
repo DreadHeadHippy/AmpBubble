@@ -4,18 +4,35 @@ AmpBubble is an Android overlay app that lets you rate the currently playing Ple
 
 ## VirusTotal Readout
 
-[![VirusTotal report](https://img.shields.io/badge/VirusTotal-view%20report-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/7664df53c0772b89efe49cdf71faf42e314148f98183143a02836556ee333f9f/detection)
+[![VirusTotal report](https://img.shields.io/badge/VirusTotal-view%20report-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/940A90CE0C7D42173ABB8036695CDA7AA6A6CDC1A8768441CCDDEFFAF922838C/detection)
 
 | Scan target | SHA-256 | Artifact |
 | --- | --- | --- |
-| Current local build | `7664DF53C0772B89EFE49CDF71FAF42E314148F98183143A02836556EE333F9F` | `app-debug.apk` |
+| Production release | `940A90CE0C7D42173ABB8036695CDA7AA6A6CDC1A8768441CCDDEFFAF922838C` | `app-release.apk` |
 
-The badge opens VirusTotal's vendor-by-vendor detection report for this exact APK. This is a debug build lookup, not a claim that every future build or release is clean. Rebuild and replace the hash above whenever the APK changes, then upload the new APK to [VirusTotal](https://www.virustotal.com/gui/home/upload) to create or refresh its report.
+The badge opens VirusTotal's vendor-by-vendor detection report for this exact APK. Scan results apply only to this signed production artifact; future builds have different hashes.
 
 To verify the hash locally on Windows:
 
 ```powershell
-Get-FileHash .\app\build\intermediates\apk\debug\app-debug.apk -Algorithm SHA256
+Get-FileHash .\app\build\outputs\apk\release\app-release.apk -Algorithm SHA256
+```
+
+### Production signing
+
+Release builds use a local `keystore.properties` file and never store signing credentials in Git. Create a production keystore once, then create `keystore.properties` in the project root with these values:
+
+```properties
+storeFile=ampbubble-release.jks
+storePassword=your-keystore-password
+keyAlias=ampbubble
+keyPassword=your-key-password
+```
+
+Keep both `ampbubble-release.jks` and `keystore.properties` backed up securely. Build the signed release APK with:
+
+```powershell
+.\gradlew.bat assembleRelease
 ```
 
 ## What It Does
