@@ -1,4 +1,4 @@
-package com.plexbubble.app.plex
+package com.ampbubble.app.plex
 
 /** A pending Plex.tv OAuth PIN, used to poll for the user's access token. */
 data class PlexPin(
@@ -47,7 +47,8 @@ data class NowPlayingMetadata(
     val playbackState: Int? = null,
     val playbackPositionMs: Long? = null,
     val playbackPositionUpdatedAtMs: Long? = null,
-    val accentColorArgb: Int? = null
+    val accentColorArgb: Int? = null,
+    val albumArtBitmap: android.graphics.Bitmap? = null
 )
 
 /** A now-playing track resolved to a Plex ratingKey, ready to be rated. */

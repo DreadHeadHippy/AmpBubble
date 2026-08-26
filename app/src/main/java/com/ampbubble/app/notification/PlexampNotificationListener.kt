@@ -1,4 +1,4 @@
-package com.plexbubble.app.notification
+package com.ampbubble.app.notification
 
 import android.app.Notification
 import android.graphics.Bitmap
@@ -7,7 +7,7 @@ import android.media.session.MediaSession
 import android.view.KeyEvent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import com.plexbubble.app.plex.NowPlayingMetadata
+import com.ampbubble.app.plex.NowPlayingMetadata
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -89,7 +89,8 @@ class PlexampNotificationListener : NotificationListenerService() {
             _nowPlaying.value = null
             return
         }
-        val accentColor = extractAccentColor(metadata)
+        val art = extractAlbumArt(metadata)
+        val accentColor = art?.let { dominantColor(it) }
         val playing = playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING
         val playbackPosition = playbackState?.position?.takeIf { it >= 0L }
         _nowPlaying.value = NowPlayingMetadata(
@@ -102,17 +103,25 @@ class PlexampNotificationListener : NotificationListenerService() {
             playbackState = playbackState?.state,
             playbackPositionMs = playbackPosition,
             playbackPositionUpdatedAtMs = playbackState?.lastPositionUpdateTime?.takeIf { it > 0L },
-            accentColorArgb = accentColor
+            accentColorArgb = accentColor,
+            albumArtBitmap = art
         )
     }
 
-    private fun extractAccentColor(metadata: android.media.MediaMetadata): Int? {
+    /** Notification-embedded art loads instantly, unlike the Plex thumb URL which depends on network session matching. */
+    private fun extractAlbumArt(metadata: android.media.MediaMetadata): Bitmap? {
         val art = metadata.getBitmap(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata.getBitmap(android.media.MediaMetadata.METADATA_KEY_ART)
             ?: metadata.getBitmap(android.media.MediaMetadata.METADATA_KEY_DISPLAY_ICON)
             ?: return null
 
-        return dominantColor(art)
+        val maxDimension = 320
+        if (art.width <= maxDimension && art.height <= maxDimension) return art
+
+        val scale = maxDimension.toFloat() / maxOf(art.width, art.height)
+        val targetWidth = (art.width * scale).toInt().coerceAtLeast(1)
+        val targetHeight = (art.height * scale).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(art, targetWidth, targetHeight, true)
     }
 
     private fun dominantColor(bitmap: Bitmap): Int? {

@@ -1,10 +1,13 @@
-package com.plexbubble.app.overlay
+package com.ampbubble.app.overlay
 
 import android.os.SystemClock
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -18,6 +21,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,8 +31,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -36,7 +38,6 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.foundation.Image
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -58,9 +59,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.plexbubble.app.R
+import androidx.compose.ui.graphics.ImageBitmap
+import com.ampbubble.app.R
 import coil.compose.AsyncImage
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -84,8 +87,8 @@ fun BubbleContent(bubbleAlpha: Float, sizeDp: Int = 56, modifier: Modifier = Mod
         contentAlignment = Alignment.Center
     ) {
         Image(
-            painter = painterResource(id = R.drawable.bubble_logo_readable),
-            contentDescription = "Plex bubble",
+            painter = painterResource(id = R.drawable.app_logo_mark),
+            contentDescription = "App bubble",
             contentScale = ContentScale.Fit,
             modifier = Modifier.size((sizeDp * 0.92f).dp)
         )
@@ -103,6 +106,7 @@ fun RatingPanelContent(
     trackAlbum: String?,
     trackYear: Int?,
     trackArtUrl: String?,
+    trackArtBitmap: ImageBitmap? = null,
     isPlaying: Boolean,
     playbackPositionMs: Long?,
     playbackPositionUpdatedAtMs: Long?,
@@ -119,7 +123,6 @@ fun RatingPanelContent(
     onPresetRating: (Float) -> Unit,
     showRecentRatings: Boolean,
     recentRatings: List<RecentRatingItemUi>,
-    onClose: () -> Unit,
     statusMessage: String? = null
 ) {
     var introAnimated by remember { mutableStateOf(false) }
@@ -159,35 +162,77 @@ fun RatingPanelContent(
             )
             .padding(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(88.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF0D0E11))
-                    .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(18.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                AsyncImage(
-                    model = trackArtUrl,
-                    contentDescription = "Album",
-                    contentScale = ContentScale.Crop,
-                    placeholder = painterResource(id = R.drawable.bubble_logo_readable),
-                    error = painterResource(id = R.drawable.bubble_logo_readable),
-                    modifier = Modifier
-                        .size(86.dp)
-                        .clip(RoundedCornerShape(17.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(10.dp, RoundedCornerShape(18.dp), clip = false)
+                .clip(RoundedCornerShape(18.dp))
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFF2A2C33), Color(0xFF1B1C21))
+                    )
                 )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+                .padding(12.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .shadow(8.dp, RoundedCornerShape(16.dp), clip = false)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color(0xFF14151A), Color(0xFF0A0B0E))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (trackArtBitmap != null) {
+                        Image(
+                            bitmap = trackArtBitmap,
+                            contentDescription = "Album",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                        )
+                    } else {
+                        AsyncImage(
+                            model = trackArtUrl,
+                            contentDescription = "Album",
+                            contentScale = ContentScale.Crop,
+                            placeholder = painterResource(id = R.drawable.app_logo_mark),
+                            error = painterResource(id = R.drawable.app_logo_mark),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                        )
+                    }
+                    // Soft glass highlight to keep the tile from reading as a flat black void while art loads.
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color.White.copy(alpha = 0.08f), Color.Transparent),
+                                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(120f, 180f)
+                                )
+                            )
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = trackTitle ?: "Nothing playing",
                     color = Color(0xFFF7F8FA),
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier
                         .fillMaxWidth()
                         .basicMarquee(iterations = Int.MAX_VALUE)
@@ -195,16 +240,19 @@ fun RatingPanelContent(
                 if (trackArtist != null) {
                     Text(
                         text = trackArtist,
-                        color = Color(0xFFB8BCC7),
+                        color = Color(0xFFC7CBD6),
+                        textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
                 if (albumYearLine != null) {
                     Text(
                         text = albumYearLine,
-                        color = Color(0xFFA2A8B8),
+                        color = Color(0xFF9BA1B0),
+                        textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Clip,
                         style = MaterialTheme.typography.labelSmall,
@@ -214,28 +262,9 @@ fun RatingPanelContent(
                     )
                 }
             }
-
-            IconButton(onClick = onClose) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
-            }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = accentColor, modifier = Modifier.size(14.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = if (isPlaying) {
-                    "Playing now"
-                } else if (!trackTitle.isNullOrBlank() && trackTitle != "Nothing playing") {
-                    "Paused"
-                } else {
-                    "Not playing"
-                },
-                color = accentColor,
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace
-            )
-        }
+        Spacer(modifier = Modifier.height(10.dp))
 
         PlaybackProgressIndicator(
             playbackPositionMs = playbackPositionMs,
@@ -290,38 +319,56 @@ fun RatingPanelContent(
             filledColor = accentColor
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
-        RatingValueLabel(
-            rating = rating,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-
-        if (ratingPresets.isNotEmpty()) {
+        if (ratingPresets.isNotEmpty() || saveConfirmed) {
             Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = "Quick presets",
-                color = Color(0xFFB8BCC7),
-                style = MaterialTheme.typography.labelSmall
-            )
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ratingPresets.forEach { preset ->
+                if (ratingPresets.isNotEmpty()) {
                     Text(
-                        text = if (preset % 1f == 0f) preset.toInt().toString() else preset.toString(),
-                        color = Color(0xFFEDEFF5),
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(accentColor.copy(alpha = 0.2f))
-                            .border(1.dp, accentColor.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                            .clickable { onPresetRating(preset) }
-                            .padding(horizontal = 9.dp, vertical = 5.dp)
+                        text = "Quick presets",
+                        color = Color(0xFFB8BCC7),
+                        style = MaterialTheme.typography.labelSmall
                     )
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+                AnimatedVisibility(visible = saveConfirmed, enter = fadeIn(), exit = fadeOut()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Verified, contentDescription = null, tint = Color(0xFF39D98A), modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Rating saved",
+                            color = Color(0xFF9DF0C7),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+            if (ratingPresets.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ratingPresets.forEach { preset ->
+                        Text(
+                            text = if (preset % 1f == 0f) preset.toInt().toString() else preset.toString(),
+                            color = Color(0xFFEDEFF5),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(accentColor.copy(alpha = 0.2f))
+                                .border(1.dp, accentColor.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                .clickable { onPresetRating(preset) }
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                        )
+                    }
                 }
             }
         }
@@ -344,8 +391,8 @@ fun RatingPanelContent(
                         model = item.artUrl,
                         contentDescription = "Recent track art",
                         contentScale = ContentScale.Crop,
-                        placeholder = painterResource(id = R.drawable.bubble_logo_readable),
-                        error = painterResource(id = R.drawable.bubble_logo_readable),
+                        placeholder = painterResource(id = R.drawable.app_logo_mark),
+                        error = painterResource(id = R.drawable.app_logo_mark),
                         modifier = Modifier
                             .size(26.dp)
                             .clip(RoundedCornerShape(6.dp))
@@ -377,7 +424,7 @@ fun RatingPanelContent(
             }
         }
 
-        if (statusMessage != null) {
+        if (statusMessage != null && !saveConfirmed) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -385,24 +432,11 @@ fun RatingPanelContent(
                     .padding(top = 10.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
-                if (saveConfirmed) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Verified, contentDescription = null, tint = Color(0xFF39D98A), modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Saved to Plex",
-                            color = Color(0xFF9DF0C7),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                } else {
-                    Text(
-                        text = statusMessage,
-                        color = Color(0xFFD5D9E3),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
+                Text(
+                    text = statusMessage,
+                    color = Color(0xFFD5D9E3),
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
         }
 

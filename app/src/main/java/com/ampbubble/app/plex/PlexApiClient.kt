@@ -1,4 +1,4 @@
-package com.plexbubble.app.plex
+package com.ampbubble.app.plex
 
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -6,7 +6,7 @@ import java.util.concurrent.TimeUnit
 /** Shared constants and HTTP client for talking to plex.tv and Plex Media Server APIs. */
 object PlexApiClient {
 
-    const val PRODUCT_NAME = "PlexBubble"
+    const val PRODUCT_NAME = "AmpBubble"
     const val PRODUCT_VERSION = "1.0"
     const val PLEXTV_BASE_URL = "https://plex.tv"
 

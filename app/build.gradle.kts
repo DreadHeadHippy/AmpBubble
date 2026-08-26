@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.plexbubble.app"
+    namespace = "com.ampbubble.app"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.plexbubble.app"
+        applicationId = "com.ampbubble.app"
         minSdk = 30
         targetSdk = 35
         versionCode = 1

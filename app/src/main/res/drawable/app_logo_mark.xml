@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original abstract orb + star mark for AmpBubble; no third-party logos or wordmarks. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#1B1D24"
+        android:pathData="M54,10 A44,44 0 1 1 53.9,10 Z" />
+    <path
+        android:fillColor="#39D98A"
+        android:pathData="M54,20 A34,34 0 1 1 53.9,20 Z"
+        android:fillAlpha="0.18" />
+    <path
+        android:fillColor="#E8C24A"
+        android:pathData="M54,30 L60.6,47.2 L79,48.6 L64.8,60.2 L69.4,78 L54,68 L38.6,78 L43.2,60.2 L29,48.6 L47.4,47.2 Z" />
+</vector>

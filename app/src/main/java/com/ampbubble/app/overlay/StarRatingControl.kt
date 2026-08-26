@@ -1,4 +1,4 @@
-package com.plexbubble.app.overlay
+package com.ampbubble.app.overlay
 
 import android.os.VibrationEffect
 import android.os.Vibrator

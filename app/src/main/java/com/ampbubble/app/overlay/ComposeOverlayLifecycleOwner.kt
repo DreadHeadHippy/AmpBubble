@@ -1,4 +1,4 @@
-package com.plexbubble.app.overlay
+package com.ampbubble.app.overlay
 
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner

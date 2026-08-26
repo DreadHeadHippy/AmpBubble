@@ -1,4 +1,4 @@
-package com.plexbubble.app.overlay
+package com.ampbubble.app.overlay
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

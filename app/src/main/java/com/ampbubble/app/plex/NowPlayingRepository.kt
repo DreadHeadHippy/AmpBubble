@@ -1,4 +1,4 @@
-package com.plexbubble.app.plex
+package com.ampbubble.app.plex
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

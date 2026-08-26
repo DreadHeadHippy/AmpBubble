@@ -1,4 +1,4 @@
-package com.plexbubble.app.data
+package com.ampbubble.app.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey

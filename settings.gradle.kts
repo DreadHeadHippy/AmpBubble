@@ -16,5 +16,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PlexBubble"
+rootProject.name = "AmpBubble"
 include(":app")

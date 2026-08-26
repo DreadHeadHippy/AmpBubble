@@ -1,4 +1,4 @@
-package com.plexbubble.app.overlay
+package com.ampbubble.app.overlay
 
 import android.animation.ValueAnimator
 import android.app.Notification
@@ -22,22 +22,24 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import com.plexbubble.app.MainActivity
-import com.plexbubble.app.R
-import com.plexbubble.app.data.PendingRatingRecord
-import com.plexbubble.app.data.RatedTrackRecord
-import com.plexbubble.app.data.SecureTokenStore
-import com.plexbubble.app.data.SettingsStore
-import com.plexbubble.app.notification.PlexampNotificationListener
-import com.plexbubble.app.plex.NowPlayingMetadata
-import com.plexbubble.app.plex.NowPlayingRepository
-import com.plexbubble.app.plex.PlexRatingRepository
+import com.ampbubble.app.MainActivity
+import com.ampbubble.app.R
+import com.ampbubble.app.data.PendingRatingRecord
+import com.ampbubble.app.data.RatedTrackRecord
+import com.ampbubble.app.data.SecureTokenStore
+import com.ampbubble.app.data.SettingsStore
+import com.ampbubble.app.notification.PlexampNotificationListener
+import com.ampbubble.app.plex.NowPlayingMetadata
+import com.ampbubble.app.plex.NowPlayingRepository
+import com.ampbubble.app.plex.PlexRatingRepository
 import androidx.lifecycle.LifecycleService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -78,6 +80,7 @@ class BubbleOverlayService : LifecycleService() {
     private var statusMessageState by mutableStateOf<String?>(null)
     private var panelAccentColorState by mutableStateOf(Color(0xFFE5A00D))
     private var currentTrackArtUrlState by mutableStateOf<String?>(null)
+    private var currentTrackArtBitmapState by mutableStateOf<ImageBitmap?>(null)
     private var recentRatingsState by mutableStateOf<List<RecentRatingItemUi>>(emptyList())
     private var showRecentRatingsState by mutableStateOf(false)
     private var ratingPresetsState by mutableStateOf<List<Float>>(emptyList())
@@ -244,6 +247,7 @@ class BubbleOverlayService : LifecycleService() {
                     trackAlbum = trackAlbumState,
                     trackYear = trackYearState,
                     trackArtUrl = currentTrackArtUrlState,
+                    trackArtBitmap = currentTrackArtBitmapState,
                     isPlaying = isPlayingState,
                     playbackPositionMs = playbackPositionMsState,
                     playbackPositionUpdatedAtMs = playbackPositionUpdatedAtMsState,
@@ -260,7 +264,6 @@ class BubbleOverlayService : LifecycleService() {
                     onPresetRating = ::submitRating,
                     showRecentRatings = showRecentRatingsState,
                     recentRatings = recentRatingsState,
-                    onClose = { togglePanel() },
                     statusMessage = statusMessageState
                 )
             }
@@ -368,6 +371,7 @@ class BubbleOverlayService : LifecycleService() {
                 playbackPositionUpdatedAtMsState = metadata.playbackPositionUpdatedAtMs
                 trackDurationMsState = metadata.durationMs
                 panelAccentColorState = metadata.accentColorArgb?.let { Color(it) } ?: Color(0xFFE5A00D)
+                currentTrackArtBitmapState = metadata.albumArtBitmap?.asImageBitmap()
                 val fingerprint = buildTrackFingerprint(metadata.title, metadata.artist, metadata.durationMs)
                 if (fingerprint != currentTrackFingerprint) {
                     currentTrackFingerprint = fingerprint
@@ -635,6 +639,7 @@ class BubbleOverlayService : LifecycleService() {
         currentTrackFingerprint = null
         currentTrackThumbPath = null
         currentTrackArtUrlState = null
+        currentTrackArtBitmapState = null
         panelAccentColorState = Color(0xFFE5A00D)
         trackResolutionJob?.cancel()
         trackResolutionJob = null
@@ -680,7 +685,7 @@ class BubbleOverlayService : LifecycleService() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_plex_bubble)
+            .setSmallIcon(R.drawable.ic_notification_bubble)
             .setContentTitle(getString(R.string.notification_bubble_active_title))
             .setContentText(getString(R.string.notification_bubble_active_text))
             .setContentIntent(contentIntent)
@@ -702,6 +707,6 @@ class BubbleOverlayService : LifecycleService() {
         private const val TRACK_CHANGE_SETTLE_DELAY_MS = 350L
         private const val TRACK_MATCH_RETRY_DELAY_MS = 250L
         private const val MAX_SESSION_MATCH_ATTEMPTS = 3
-        const val ACTION_STOP = "com.plexbubble.app.action.STOP_BUBBLE"
+        const val ACTION_STOP = "com.ampbubble.app.action.STOP_BUBBLE"
     }
 }

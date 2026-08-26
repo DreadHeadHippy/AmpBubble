@@ -1,11 +1,11 @@
-# PlexBubble
+# AmpBubble
 
-PlexBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a fully opaque floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
+AmpBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a fully opaque floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
 
 ## What It Does
 
-- Shows an always-on-top floating bubble.
-- Expands into a panel with large now-playing album art and Plexamp metadata.
+- Shows an always-on-top floating bubble; tap it again to close the expanded panel.
+- Expands into a panel with a large hero-style square album art tile and Plexamp metadata.
 - Lets you rate tracks with drag-friendly half stars and one haptic tick per selected or crossed half-star step.
 - Sends ratings to Plex Media Server using the Plex rating API.
 - Caches ratings locally and retries failed submissions later.
@@ -17,11 +17,10 @@ PlexBubble is an Android overlay app that lets you rate the currently playing Pl
 
 ## Current Playback Behavior
 
-- Playing state shows: Playing now.
-- Paused state shows: Paused.
-- Stopped/no active session shows: Nothing playing.
+- Album art loads instantly from the Plexamp notification's embedded artwork, falling back to the Plex thumb URL only when no embedded art is available.
 - The panel shows a read-only progress bar below now-playing information; it advances during playback and freezes when paused.
 - The panel opens above the bubble when space below is insufficient, avoiding a visible position jump near the bottom edge of the screen.
+- A brief "Rating saved" confirmation flashes next to Quick presets after a successful rating, then disappears.
 
 ## Tech Stack
 
@@ -52,16 +51,16 @@ See manifest details in [app/src/main/AndroidManifest.xml](app/src/main/AndroidM
 
 ## Project Layout
 
-- App entry and setup UI: [app/src/main/java/com/plexbubble/app/MainActivity.kt](app/src/main/java/com/plexbubble/app/MainActivity.kt)
-- Overlay service and runtime state: [app/src/main/java/com/plexbubble/app/overlay/BubbleOverlayService.kt](app/src/main/java/com/plexbubble/app/overlay/BubbleOverlayService.kt)
-- Overlay Compose UI: [app/src/main/java/com/plexbubble/app/overlay/BubbleView.kt](app/src/main/java/com/plexbubble/app/overlay/BubbleView.kt)
-- Star interaction control: [app/src/main/java/com/plexbubble/app/overlay/StarRatingControl.kt](app/src/main/java/com/plexbubble/app/overlay/StarRatingControl.kt)
-- Plexamp notification bridge: [app/src/main/java/com/plexbubble/app/notification/PlexampNotificationListener.kt](app/src/main/java/com/plexbubble/app/notification/PlexampNotificationListener.kt)
-- Plex auth flow: [app/src/main/java/com/plexbubble/app/plex/PlexAuthRepository.kt](app/src/main/java/com/plexbubble/app/plex/PlexAuthRepository.kt)
-- Plex server discovery: [app/src/main/java/com/plexbubble/app/plex/PlexServerRepository.kt](app/src/main/java/com/plexbubble/app/plex/PlexServerRepository.kt)
-- Active session matching: [app/src/main/java/com/plexbubble/app/plex/NowPlayingRepository.kt](app/src/main/java/com/plexbubble/app/plex/NowPlayingRepository.kt)
-- Rating API writes: [app/src/main/java/com/plexbubble/app/plex/PlexRatingRepository.kt](app/src/main/java/com/plexbubble/app/plex/PlexRatingRepository.kt)
-- Persisted settings and secure token store: [app/src/main/java/com/plexbubble/app/data/SettingsStore.kt](app/src/main/java/com/plexbubble/app/data/SettingsStore.kt)
+- App entry and setup UI: [app/src/main/java/com/ampbubble/app/MainActivity.kt](app/src/main/java/com/ampbubble/app/MainActivity.kt)
+- Overlay service and runtime state: [app/src/main/java/com/ampbubble/app/overlay/BubbleOverlayService.kt](app/src/main/java/com/ampbubble/app/overlay/BubbleOverlayService.kt)
+- Overlay Compose UI: [app/src/main/java/com/ampbubble/app/overlay/BubbleView.kt](app/src/main/java/com/ampbubble/app/overlay/BubbleView.kt)
+- Star interaction control: [app/src/main/java/com/ampbubble/app/overlay/StarRatingControl.kt](app/src/main/java/com/ampbubble/app/overlay/StarRatingControl.kt)
+- Plexamp notification bridge: [app/src/main/java/com/ampbubble/app/notification/PlexampNotificationListener.kt](app/src/main/java/com/ampbubble/app/notification/PlexampNotificationListener.kt)
+- Plex auth flow: [app/src/main/java/com/ampbubble/app/plex/PlexAuthRepository.kt](app/src/main/java/com/ampbubble/app/plex/PlexAuthRepository.kt)
+- Plex server discovery: [app/src/main/java/com/ampbubble/app/plex/PlexServerRepository.kt](app/src/main/java/com/ampbubble/app/plex/PlexServerRepository.kt)
+- Active session matching: [app/src/main/java/com/ampbubble/app/plex/NowPlayingRepository.kt](app/src/main/java/com/ampbubble/app/plex/NowPlayingRepository.kt)
+- Rating API writes: [app/src/main/java/com/ampbubble/app/plex/PlexRatingRepository.kt](app/src/main/java/com/ampbubble/app/plex/PlexRatingRepository.kt)
+- Persisted settings and secure token store: [app/src/main/java/com/ampbubble/app/data/SettingsStore.kt](app/src/main/java/com/ampbubble/app/data/SettingsStore.kt)
 - App module build config: [app/build.gradle.kts](app/build.gradle.kts)
 
 ## Build and Run
@@ -134,7 +133,7 @@ The app distinguishes between playing, paused, and stopped using MediaController
 - Verify overlay permission is granted.
 - Verify Bubble is enabled in the app.
 - Confirm foreground service notification is present.
-- Enabling Bubble without overlay permission should open Android's `Display over other apps` setting for PlexBubble.
+- Enabling Bubble without overlay permission should open Android's `Display over other apps` setting for AmpBubble.
 
 ### Track info does not update
 
@@ -163,7 +162,7 @@ The app distinguishes between playing, paused, and stopped using MediaController
 
 ## Development Notes
 
-- Root project name is PlexBubble and module is app.
+- Root project name is AmpBubble and module is app.
 - See [settings.gradle.kts](settings.gradle.kts) for Gradle repository and module setup.
 - Notification package matching for Plex/Plexamp clients is handled in the listener companion object.
 
@@ -172,6 +171,14 @@ The app distinguishes between playing, paused, and stopped using MediaController
 - Behavior depends on Plexamp session metadata availability from Android media notifications.
 - Session matching can fail for ambiguous metadata.
 - Network reliability impacts immediate rating writes.
+- Recent-ratings thumbnails still rely on the network Plex thumb URL (not the embedded notification bitmap), so they can lag or fail independently of the main now-playing art.
+
+## Recent Changes
+
+- Rebranded from PlexBubble to AmpBubble for public release: new package `com.ampbubble.app`, new app name/theme/deep-link scheme, and removal of Plex-trademarked logo assets in favor of an original placeholder mark (swap in final brand art later).
+- Album art reliability fix: the now-playing panel prefers the bitmap embedded in Plexamp's media notification (instant, no network round trip) and only falls back to the Plex thumb URL when no embedded art is present.
+- Now-playing panel redesign: hero-style full-width square album art with title/artist/album centered below it, softer shadow/gradient card styling instead of hard borders, removed the redundant "Playing now/Paused" text and the numeric star rating label, and removed the panel's close button (tap the bubble to close instead).
+- "Saved to Plex" confirmation reworded to "Rating saved" and moved next to Quick presets, right-aligned, matching its font size and auto-dismissing after a few seconds.
 
 ## Suggested Next Improvements
 

@@ -1,4 +1,4 @@
-package com.plexbubble.app
+package com.ampbubble.app
 
 import android.content.Intent
 import android.net.Uri
@@ -44,11 +44,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.plexbubble.app.data.SecureTokenStore
-import com.plexbubble.app.data.SettingsStore
-import com.plexbubble.app.overlay.BubbleOverlayService
-import com.plexbubble.app.plex.PlexAuthRepository
-import com.plexbubble.app.plex.PlexServerRepository
+import com.ampbubble.app.data.SecureTokenStore
+import com.ampbubble.app.data.SettingsStore
+import com.ampbubble.app.overlay.BubbleOverlayService
+import com.ampbubble.app.plex.PlexAuthRepository
+import com.ampbubble.app.plex.PlexServerRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -199,7 +199,7 @@ private fun MainScreen(
                         .padding(16.dp)
                 ) {
                     Text(
-                        text = "PlexBubble",
+                        text = "AmpBubble",
                         color = Color(0xFFF5F7FB),
                         style = MaterialTheme.typography.headlineSmall
                     )
