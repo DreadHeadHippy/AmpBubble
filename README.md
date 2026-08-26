@@ -2,6 +2,22 @@
 
 AmpBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a fully opaque floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
 
+## VirusTotal Readout
+
+[![VirusTotal report](https://img.shields.io/badge/VirusTotal-view%20report-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/7664df53c0772b89efe49cdf71faf42e314148f98183143a02836556ee333f9f/detection)
+
+| Scan target | SHA-256 | Artifact |
+| --- | --- | --- |
+| Current local build | `7664DF53C0772B89EFE49CDF71FAF42E314148F98183143A02836556EE333F9F` | `app-debug.apk` |
+
+The badge opens VirusTotal's vendor-by-vendor detection report for this exact APK. This is a debug build lookup, not a claim that every future build or release is clean. Rebuild and replace the hash above whenever the APK changes, then upload the new APK to [VirusTotal](https://www.virustotal.com/gui/home/upload) to create or refresh its report.
+
+To verify the hash locally on Windows:
+
+```powershell
+Get-FileHash .\app\build\intermediates\apk\debug\app-debug.apk -Algorithm SHA256
+```
+
 ## What It Does
 
 - Shows an always-on-top floating bubble; tap it again to close the expanded panel.
@@ -86,7 +102,7 @@ Run this from the project root after Java 17 is available to Gradle:
 .\gradlew.bat assembleDebug
 ```
 
-The debug-signed APK is created at `app\build\outputs\apk\debug\app-debug.apk`. Copy it to an Android 11+ phone and allow the file manager or browser to install unknown apps when Android prompts you.
+The debug-signed APK is currently created at `app\build\intermediates\apk\debug\app-debug.apk`. Copy it to an Android 11+ phone and allow the file manager or browser to install unknown apps when Android prompts you.
 
 ## First-Time Setup
 
