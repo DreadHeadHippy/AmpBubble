@@ -56,6 +56,8 @@ class BubbleOverlayService : LifecycleService() {
     private lateinit var windowManager: WindowManager
     private lateinit var bubbleLayoutParams: WindowManager.LayoutParams
     private var panelLayoutParams: WindowManager.LayoutParams? = null
+    private var bubblePreMenuX: Int? = null
+    private var bubblePreMenuY: Int? = null
 
     private lateinit var bubbleView: ComposeView
     private var panelView: ComposeView? = null
@@ -322,12 +324,68 @@ class BubbleOverlayService : LifecycleService() {
         if (view.isAttachedToWindow) {
             runCatchingSilently { windowManager.updateViewLayout(view, params) }
         }
+        popBubbleOutFromUnderPanel(panelWidth, panelHeight, params, screenHeight)
+    }
+
+    /** If the positioned panel would cover the bubble, nudge the bubble clear of it. */
+    private fun popBubbleOutFromUnderPanel(
+        panelWidth: Int,
+        panelHeight: Int,
+        panelParams: WindowManager.LayoutParams,
+        screenHeight: Int
+    ) {
+        val bubbleWidth = bubbleView.width.takeIf { it > 0 } ?: 150
+        val bubbleHeight = bubbleView.height.takeIf { it > 0 } ?: 150
+        val bubbleLeft = bubbleLayoutParams.x
+        val bubbleTop = bubbleLayoutParams.y
+        val bubbleRight = bubbleLeft + bubbleWidth
+        val bubbleBottom = bubbleTop + bubbleHeight
+
+        val panelLeft = panelParams.x
+        val panelTop = panelParams.y
+        val panelRight = panelLeft + panelWidth
+        val panelBottom = panelTop + panelHeight
+
+        val overlaps = bubbleLeft < panelRight && bubbleRight > panelLeft &&
+            bubbleTop < panelBottom && bubbleBottom > panelTop
+        if (!overlaps) return
+
+        // Remember the original spot so the bubble can return once the menu closes.
+        if (bubblePreMenuY == null) {
+            bubblePreMenuX = bubbleLayoutParams.x
+            bubblePreMenuY = bubbleLayoutParams.y
+        }
+
+        val margin = 10
+        val aboveY = panelTop - bubbleHeight - margin
+        val belowY = panelBottom + margin
+        val targetY = when {
+            belowY + bubbleHeight <= screenHeight -> belowY
+            aboveY >= 0 -> aboveY
+            else -> bubbleTop
+        }
+
+        if (targetY != bubbleTop) {
+            bubbleLayoutParams.y = targetY
+            runCatchingSilently { windowManager.updateViewLayout(bubbleView, bubbleLayoutParams) }
+        }
+    }
+
+    /** Reverts the bubble to its pre-menu position once the panel is dismissed. */
+    private fun restoreBubbleFromPanelOverlap() {
+        val originalY = bubblePreMenuY ?: return
+        bubbleLayoutParams.x = bubblePreMenuX ?: bubbleLayoutParams.x
+        bubbleLayoutParams.y = originalY
+        runCatchingSilently { windowManager.updateViewLayout(bubbleView, bubbleLayoutParams) }
+        bubblePreMenuX = null
+        bubblePreMenuY = null
     }
 
     private fun removePanelWindow() {
         panelView?.let { runCatchingSilently { windowManager.removeView(it) } }
         panelView = null
         panelLayoutParams = null
+        restoreBubbleFromPanelOverlap()
     }
 
     // --- Settings -----------------------------------------------------------

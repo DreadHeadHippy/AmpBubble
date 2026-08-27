@@ -53,6 +53,7 @@ Keep both `ampbubble-release.jks` and `keystore.properties` backed up securely. 
 - Album art loads instantly from the Plexamp notification's embedded artwork, falling back to the Plex thumb URL only when no embedded art is available.
 - The panel shows a read-only progress bar below now-playing information; it advances during playback and freezes when paused.
 - The panel opens above the bubble when space below is insufficient, avoiding a visible position jump near the bottom edge of the screen.
+- If the positioned panel would still cover the bubble, the bubble slides just clear of the panel and returns to its original spot once the panel closes.
 - A brief "Rating saved" confirmation flashes next to Quick presets after a successful rating, then disappears.
 
 ## Tech Stack
