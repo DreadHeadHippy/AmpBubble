@@ -1,39 +1,15 @@
+[![VirusTotal report](https://img.shields.io/badge/VirusTotal-view%20report-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/940A90CE0C7D42173ABB8036695CDA7AA6A6CDC1A8768441CCDDEFFAF922838C/detection)
+
 # AmpBubble
 
 AmpBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a fully opaque floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
 
-## VirusTotal Readout
+## Recent Changes
 
-[![VirusTotal report](https://img.shields.io/badge/VirusTotal-view%20report-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/940A90CE0C7D42173ABB8036695CDA7AA6A6CDC1A8768441CCDDEFFAF922838C/detection)
-
-| Scan target | SHA-256 | Artifact |
-| --- | --- | --- |
-| Production release | `940A90CE0C7D42173ABB8036695CDA7AA6A6CDC1A8768441CCDDEFFAF922838C` | `app-release.apk` |
-
-The badge opens VirusTotal's vendor-by-vendor detection report for this exact APK. Scan results apply only to this signed production artifact; future builds have different hashes.
-
-To verify the hash locally on Windows:
-
-```powershell
-Get-FileHash .\app\build\outputs\apk\release\app-release.apk -Algorithm SHA256
-```
-
-### Production signing
-
-Release builds use a local `keystore.properties` file and never store signing credentials in Git. Create a production keystore once, then create `keystore.properties` in the project root with these values:
-
-```properties
-storeFile=ampbubble-release.jks
-storePassword=your-keystore-password
-keyAlias=ampbubble
-keyPassword=your-key-password
-```
-
-Keep both `ampbubble-release.jks` and `keystore.properties` backed up securely. Build the signed release APK with:
-
-```powershell
-.\gradlew.bat assembleRelease
-```
+- Rebranded from PlexBubble to AmpBubble for public release: new package `com.ampbubble.app`, new app name/theme/deep-link scheme, and removal of Plex-trademarked logo assets in favor of an original placeholder mark (swap in final brand art later).
+- Album art reliability fix: the now-playing panel prefers the bitmap embedded in Plexamp's media notification (instant, no network round trip) and only falls back to the Plex thumb URL when no embedded art is present.
+- Now-playing panel redesign: hero-style full-width square album art with title/artist/album centered below it, softer shadow/gradient card styling instead of hard borders, removed the redundant "Playing now/Paused" text and the numeric star rating label, and removed the panel's close button (tap the bubble to close instead).
+- "Saved to Plex" confirmation reworded to "Rating saved" and moved next to Quick presets, right-aligned, matching its font size and auto-dismissing after a few seconds.
 
 ## What It Does
 
@@ -111,16 +87,6 @@ Toolchain details:
 - targetSdk: 35
 
 See [app/build.gradle.kts](app/build.gradle.kts).
-
-### Build a sideloadable APK on Windows
-
-Run this from the project root after Java 17 is available to Gradle:
-
-```powershell
-.\gradlew.bat assembleDebug
-```
-
-The debug-signed APK is currently created at `app\build\intermediates\apk\debug\app-debug.apk`. Copy it to an Android 11+ phone and allow the file manager or browser to install unknown apps when Android prompts you.
 
 ## First-Time Setup
 
@@ -206,20 +172,6 @@ The app distinguishes between playing, paused, and stopped using MediaController
 - Session matching can fail for ambiguous metadata.
 - Network reliability impacts immediate rating writes.
 - Recent-ratings thumbnails still rely on the network Plex thumb URL (not the embedded notification bitmap), so they can lag or fail independently of the main now-playing art.
-
-## Recent Changes
-
-- Rebranded from PlexBubble to AmpBubble for public release: new package `com.ampbubble.app`, new app name/theme/deep-link scheme, and removal of Plex-trademarked logo assets in favor of an original placeholder mark (swap in final brand art later).
-- Album art reliability fix: the now-playing panel prefers the bitmap embedded in Plexamp's media notification (instant, no network round trip) and only falls back to the Plex thumb URL when no embedded art is present.
-- Now-playing panel redesign: hero-style full-width square album art with title/artist/album centered below it, softer shadow/gradient card styling instead of hard borders, removed the redundant "Playing now/Paused" text and the numeric star rating label, and removed the panel's close button (tap the bubble to close instead).
-- "Saved to Plex" confirmation reworded to "Rating saved" and moved next to Quick presets, right-aligned, matching its font size and auto-dismissing after a few seconds.
-
-## Suggested Next Improvements
-
-- Add screenshot section for setup and panel states.
-- Add unit tests for session matching and preset parsing.
-- Add instrumentation tests for permission and service lifecycle flows.
-- Add explicit in-app diagnostics screen export action.
 
 ## License
 
