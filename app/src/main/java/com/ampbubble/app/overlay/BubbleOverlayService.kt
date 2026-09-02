@@ -126,7 +126,12 @@ class BubbleOverlayService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_STOP) {
-            stopSelf()
+            lifecycleScope.launch {
+                settingsStore.setBubbleEnabled(false)
+                stopSelf()
+            }
+        } else if (::settingsStore.isInitialized) {
+            refreshNowPlayingOnDemand()
         }
         return START_STICKY
     }

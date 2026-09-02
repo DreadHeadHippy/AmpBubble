@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.ampbubble.app.data.SecureTokenStore
 import com.ampbubble.app.data.SettingsStore
 import com.ampbubble.app.overlay.BubbleOverlayService
@@ -92,6 +93,18 @@ class MainActivity : ComponentActivity() {
                         onToggleBubble = { enabled -> toggleBubbleService(enabled) }
                     )
                 }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        lifecycleScope.launch {
+            if (settingsStore.bubbleEnabled.first() && Settings.canDrawOverlays(this@MainActivity)) {
+                ContextCompat.startForegroundService(
+                    this@MainActivity,
+                    Intent(this@MainActivity, BubbleOverlayService::class.java)
+                )
             }
         }
     }
