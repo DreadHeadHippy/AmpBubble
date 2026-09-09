@@ -1,6 +1,8 @@
 package com.ampbubble.app.notification
 
 import android.app.Notification
+import android.content.ComponentName
+import android.content.Context
 import android.graphics.Bitmap
 import android.media.session.MediaController
 import android.media.session.MediaSession
@@ -179,6 +181,13 @@ class PlexampNotificationListener : NotificationListenerService() {
 
         @Volatile
         private var activeController: MediaController? = null
+
+        /** Forces Android to redeliver onListenerConnected(), re-syncing state after a stale/long-lived binding. */
+        fun requestRebind(context: Context) {
+            runCatching {
+                NotificationListenerService.requestRebind(ComponentName(context, PlexampNotificationListener::class.java))
+            }
+        }
 
         fun togglePlayPause(): Boolean = withTransportControls { controls, controller ->
             val state = controller.playbackState?.state

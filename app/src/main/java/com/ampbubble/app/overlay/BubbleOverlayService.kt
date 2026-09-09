@@ -40,12 +40,14 @@ import com.ampbubble.app.notification.PlexampNotificationListener
 import com.ampbubble.app.plex.NowPlayingMetadata
 import com.ampbubble.app.plex.NowPlayingRepository
 import com.ampbubble.app.plex.PlexRatingRepository
+import com.ampbubble.app.plex.PlexSession
 import androidx.lifecycle.LifecycleService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
 import kotlin.math.roundToInt
@@ -95,8 +97,7 @@ class BubbleOverlayService : LifecycleService() {
     private var pendingRatingSubmitJob: Job? = null
     private var trackResolutionJob: Job? = null
     private var trackResolutionVersion = 0L
-    private var baseUrl: String = ""
-    private var authToken: String? = null
+    private var fallbackPollJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -117,6 +118,7 @@ class BubbleOverlayService : LifecycleService() {
         addBubbleWindow()
         observeSettings()
         observeNowPlaying()
+        startFallbackPolling()
         lifecycleScope.launch {
             hydratePersistentState()
             processPendingRatingsQueue()
@@ -131,6 +133,7 @@ class BubbleOverlayService : LifecycleService() {
                 stopSelf()
             }
         } else if (::settingsStore.isInitialized) {
+            PlexampNotificationListener.requestRebind(applicationContext)
             refreshNowPlayingOnDemand()
         }
         return START_STICKY
@@ -144,6 +147,7 @@ class BubbleOverlayService : LifecycleService() {
     override fun onDestroy() {
         removePanelWindow()
         if (::bubbleView.isInitialized) runCatchingSilently { windowManager.removeView(bubbleView) }
+        fallbackPollJob?.cancel()
         overlayLifecycleOwner.onDestroy()
         super.onDestroy()
     }
@@ -463,6 +467,62 @@ class BubbleOverlayService : LifecycleService() {
         }
     }
 
+    /**
+     * Self-heals when the passive notification listener never reconnects (e.g. after long Doze/background
+     * periods): while it reports nothing playing, poll Plex directly so the bubble still reflects reality.
+     */
+    private fun startFallbackPolling() {
+        fallbackPollJob?.cancel()
+        fallbackPollJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(FALLBACK_POLL_INTERVAL_MS)
+                if (!settingsStore.bubbleEnabled.first()) continue
+
+                val metadata = PlexampNotificationListener.nowPlaying.value
+                val notificationStopped = metadata == null ||
+                    metadata.playbackState == PlaybackState.STATE_STOPPED ||
+                    metadata.playbackState == PlaybackState.STATE_NONE
+                if (!notificationStopped) continue
+
+                PlexampNotificationListener.requestRebind(applicationContext)
+
+                val resolvedBase = currentBaseUrl() ?: continue
+                val token = currentAuthToken() ?: continue
+                val session = nowPlayingRepository.fetchActiveSessions(resolvedBase, token).getOrNull()?.firstOrNull()
+                if (session != null) {
+                    applySessionAsNowPlaying(session, resolvedBase, token)
+                    settingsStore.addDiagnosticEvent("fallback_poll:matched_session")
+                }
+            }
+        }
+    }
+
+    /** Populates now-playing state directly from a Plex session, bypassing the (possibly stale) notification listener. */
+    private suspend fun applySessionAsNowPlaying(session: PlexSession, resolvedBase: String, token: String) {
+        ensureRatingCacheLoaded()
+        var albumName = session.parentTitle
+        var year = session.year
+        if (albumName.isNullOrBlank() || year == null) {
+            val context = nowPlayingRepository.fetchTrackContext(resolvedBase, token, session.ratingKey).getOrNull()
+            if (albumName.isNullOrBlank()) albumName = context?.album
+            if (year == null) year = context?.year
+        }
+        currentTrackFingerprint = buildTrackFingerprint(session.title, session.grandparentTitle, session.durationMs)
+        trackTitleState = session.title
+        trackArtistState = session.grandparentTitle
+        trackAlbumState = albumName
+        trackYearState = year
+        trackDurationMsState = session.durationMs
+        isPlayingState = true
+        playbackPositionMsState = null
+        playbackPositionUpdatedAtMsState = null
+        resolvedRatingKey = session.ratingKey
+        currentTrackThumbPath = session.thumbPath
+        currentTrackArtUrlState = buildMediaUrl(resolvedBase, token, session.thumbPath)
+        ratingState = cachedRatingByKey[session.ratingKey] ?: (session.userRating ?: 0f) / 2f
+        statusMessageState = null
+    }
+
     private fun resolveRatingKeyAndPrefillRating(title: String?, artist: String?, album: String?, year: Int?, durationMs: Long?) {
         val fingerprint = buildTrackFingerprint(title, artist, durationMs)
         val resolutionVersion = ++trackResolutionVersion
@@ -709,21 +769,19 @@ class BubbleOverlayService : LifecycleService() {
         trackResolutionVersion++
     }
 
+    // Always re-read from DataStore/EncryptedSharedPreferences: caching in memory left the service
+    // stuck on a stale server URL or token after the underlying settings changed while backgrounded.
     private suspend fun currentBaseUrl(): String? {
-        if (baseUrl.isNotBlank()) return baseUrl
         val useManual = settingsStore.useManualServer.first()
-        baseUrl = if (useManual) {
+        val resolved = if (useManual) {
             settingsStore.manualBaseUrl.first()
         } else {
             settingsStore.resolvedBaseUrl.first()
         }
-        return baseUrl.ifBlank { null }
+        return resolved.ifBlank { null }
     }
 
-    private fun currentAuthToken(): String? {
-        if (authToken.isNullOrBlank()) authToken = tokenStore.authToken
-        return authToken
-    }
+    private fun currentAuthToken(): String? = tokenStore.authToken?.takeIf { it.isNotBlank() }
 
     // --- Foreground notification ---------------------------------------------
 
@@ -770,6 +828,7 @@ class BubbleOverlayService : LifecycleService() {
         private const val TRACK_CHANGE_SETTLE_DELAY_MS = 350L
         private const val TRACK_MATCH_RETRY_DELAY_MS = 250L
         private const val MAX_SESSION_MATCH_ATTEMPTS = 3
+        private const val FALLBACK_POLL_INTERVAL_MS = 15_000L
         const val ACTION_STOP = "com.ampbubble.app.action.STOP_BUBBLE"
     }
 }

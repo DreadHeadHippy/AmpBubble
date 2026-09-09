@@ -47,6 +47,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.ampbubble.app.data.SecureTokenStore
 import com.ampbubble.app.data.SettingsStore
+import com.ampbubble.app.notification.PlexampNotificationListener
 import com.ampbubble.app.overlay.BubbleOverlayService
 import com.ampbubble.app.plex.PlexAuthRepository
 import com.ampbubble.app.plex.PlexServerRepository
@@ -99,6 +100,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        PlexampNotificationListener.requestRebind(applicationContext)
         lifecycleScope.launch {
             if (settingsStore.bubbleEnabled.first() && Settings.canDrawOverlays(this@MainActivity)) {
                 ContextCompat.startForegroundService(
