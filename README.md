@@ -4,7 +4,7 @@
 
 AmpBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a fully opaque floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
 
-Current release: `0.3.9` (version code `12`).
+Current release: `0.3.8` (version code `11`).
 
 AmpBubble is an independent project and is not affiliated with Plex or Plexamp.
 

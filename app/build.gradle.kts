@@ -21,8 +21,8 @@ android {
         applicationId = "com.ampbubble.app"
         minSdk = 30
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.3.9"
+        versionCode = 11
+        versionName = "0.3.8"
     }
 
     signingConfigs {
