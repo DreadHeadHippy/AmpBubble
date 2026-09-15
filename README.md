@@ -1,15 +1,12 @@
-[![VirusTotal report](https://img.shields.io/badge/VirusTotal-view%20report-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/940A90CE0C7D42173ABB8036695CDA7AA6A6CDC1A8768441CCDDEFFAF922838C/detection)
+[![VirusTotal scan](https://img.shields.io/badge/VirusTotal-scan%20latest%20release-394EFF?logo=virustotal&logoColor=white)](https://github.com/DreadHeadHippy/AmpBubble/releases/latest/download/app-release.apk)
 
 # AmpBubble
 
 AmpBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a fully opaque floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
 
-## Recent Changes
+Current release: `0.3.9` (version code `12`).
 
-- Rebranded from PlexBubble to AmpBubble for public release: new package `com.ampbubble.app`, new app name/theme/deep-link scheme, and removal of Plex-trademarked logo assets in favor of an original placeholder mark (swap in final brand art later).
-- Album art reliability fix: the now-playing panel prefers the bitmap embedded in Plexamp's media notification (instant, no network round trip) and only falls back to the Plex thumb URL when no embedded art is present.
-- Now-playing panel redesign: hero-style full-width square album art with title/artist/album centered below it, softer shadow/gradient card styling instead of hard borders, removed the redundant "Playing now/Paused" text and the numeric star rating label, and removed the panel's close button (tap the bubble to close instead).
-- "Saved to Plex" confirmation reworded to "Rating saved" and moved next to Quick presets, right-aligned, matching its font size and auto-dismissing after a few seconds.
+AmpBubble is an independent project and is not affiliated with Plex or Plexamp.
 
 ## What It Does
 
@@ -19,15 +16,18 @@ AmpBubble is an Android overlay app that lets you rate the currently playing Ple
 - Sends ratings to Plex Media Server using the Plex rating API.
 - Caches ratings locally and retries failed submissions later.
 - Keeps recent ratings in local history and can show the latest three directly at the bottom of the panel.
-- Shows a compact, read-only playback progress bar with time labels when room allows.
+- Shows a compact seekable playback progress bar with time labels when room allows.
 - Resolves the active Plex track and rating after each Plexamp track change, even when the panel is closed.
-- Supports manual server override for URL and token.
+- Supports manual server override for server URL and token.
 - Uses secure encrypted token storage for Plex auth tokens.
+- Displays source quality such as `FLAC 44.1/16`; when available, shows the active transcode codec separately.
 
 ## Current Playback Behavior
 
 - Album art loads instantly from the Plexamp notification's embedded artwork, falling back to the Plex thumb URL only when no embedded art is available.
-- The panel shows a read-only progress bar below now-playing information; it advances during playback and freezes when paused.
+- The panel shows a seekable progress bar below now-playing information; drag or tap it to seek within the track.
+- The panel shows source codec and quality separately from the output stream, for example `FLAC -> OPUS` and `44.1/16`.
+- FLAC quality is read from the file's `STREAMINFO` header using a small ranged request when Plex's JSON metadata does not include it; it may appear shortly after the track is matched.
 - The panel opens above the bubble when space below is insufficient, avoiding a visible position jump near the bottom edge of the screen.
 - If the positioned panel would still cover the bubble, the bubble slides just clear of the panel and returns to its original spot once the panel closes.
 - A brief "Rating saved" confirmation flashes next to Quick presets after a successful rating, then disappears.
@@ -87,6 +87,27 @@ Toolchain details:
 - targetSdk: 35
 
 See [app/build.gradle.kts](app/build.gradle.kts).
+
+### Command line
+
+Set `JAVA_HOME` to a JDK 17 installation, then run:
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest
+.\gradlew.bat :app:assembleDebug
+```
+
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Release signing
+
+Copy [keystore.properties.example](keystore.properties.example) to `keystore.properties`, replace its placeholder values, and keep both the properties file and keystore out of version control. Then run:
+
+```powershell
+.\gradlew.bat assembleRelease
+```
+
+The signed APK is written to `app/build/outputs/apk/release/app-release.apk`.
 
 ## First-Time Setup
 
@@ -159,6 +180,8 @@ The app distinguishes between playing, paused, and stopped using MediaController
 - Non-secret app settings are stored in DataStore.
 - The app does not require media file access.
 - The app communicates with Plex endpoints you configure or discover.
+- The app requests only the permissions listed above and does not upload library content or audio files.
+- FLAC quality detection requests only the beginning of the matched file and does not download the full track.
 
 ## Development Notes
 
@@ -169,11 +192,13 @@ The app distinguishes between playing, paused, and stopped using MediaController
 ## Known Limitations
 
 - Behavior depends on Plexamp session metadata availability from Android media notifications.
+- Transcode details depend on Plex exposing an active `TranscodeSession`; direct-play source quality can require a ranged request to the media file.
 - Session matching can fail for ambiguous metadata.
 - Network reliability impacts immediate rating writes.
 - Recent-ratings thumbnails still rely on the network Plex thumb URL (not the embedded notification bitmap), so they can lag or fail independently of the main now-playing art.
 
 ## License
 
-No license file is currently included in this repository.
-Add one if you intend to distribute or accept external contributions.
+AmpBubble is licensed under the MIT License. See [LICENSE](LICENSE).
+
+Third-party dependency licenses are summarized in [DEPENDENCIES.md](DEPENDENCIES.md).

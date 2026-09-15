@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -13,8 +14,13 @@ class NowPlayingRepository {
 
     data class TrackContext(
         val album: String?,
-        val year: Int?
+        val year: Int?,
+        val sampleRateHz: Int? = null,
+        val bitDepth: Int? = null,
+        val sourcePath: String? = null
     )
+
+    data class AudioQuality(val sampleRateHz: Int, val bitDepth: Int)
 
     suspend fun fetchActiveSessions(baseUrl: String, authToken: String): Result<List<PlexSession>> =
         withContext(Dispatchers.IO) {
@@ -33,23 +39,120 @@ class NowPlayingRepository {
                     val metadata: JSONArray = container?.optJSONArray("Metadata") ?: JSONArray()
                     (0 until metadata.length()).map { i ->
                         val item = metadata.getJSONObject(i)
-                        val sessionObject = item.optJSONObject("Session")
-                        val sessionId = sessionObject?.optString("id")?.ifBlank { null }
-                        PlexSession(
-                            sessionId = sessionId,
-                            ratingKey = item.optString("ratingKey"),
-                            title = item.optString("title"),
-                            grandparentTitle = item.optString("grandparentTitle", null),
-                            parentTitle = item.optString("parentTitle", null),
-                            thumbPath = item.optString("thumb").ifBlank { null },
-                            year = item.optInt("year", 0).takeIf { it > 0 },
-                            durationMs = if (item.has("duration")) item.optLong("duration") else null,
-                            userRating = if (item.has("userRating")) item.optDouble("userRating").toFloat() else null
-                        )
+                        parsePlexSession(item)
                     }
                 }
             }
         }
+
+    internal fun parsePlexSession(item: JSONObject): PlexSession {
+        val sessionId = item.optJSONObject("Session")?.optString("id")?.ifBlank { null }
+        val media = item.optJSONArray("Media")?.optJSONObject(0)
+        val part = media?.optJSONArray("Part")?.optJSONObject(0)
+        val transcode = item.optJSONObject("TranscodeSession")
+        val audioDecision = transcode?.optString("audioDecision")?.lowercase()
+        val transcodedCodec = transcode
+            ?.optString("audioCodec")
+            ?.takeIf { !it.isNullOrBlank() && (audioDecision == "transcode" || audioDecision == null) }
+        val bitrateKbps = audioBitrateKbps(media, part, transcode)
+        val (sampleRateHz, bitDepth) = audioQuality(media, part)
+
+        return PlexSession(
+                            sessionId = sessionId,
+                            ratingKey = item.optString("ratingKey"),
+                            title = item.optString("title"),
+                            grandparentTitle = item.optString("grandparentTitle").ifBlank { null },
+                            parentTitle = item.optString("parentTitle").ifBlank { null },
+                            thumbPath = item.optString("thumb").ifBlank { null },
+                            year = item.optInt("year", 0).takeIf { it > 0 },
+                            durationMs = if (item.has("duration")) item.optLong("duration") else null,
+                            userRating = if (item.has("userRating")) item.optDouble("userRating").toFloat() else null,
+                            originalCodec = part?.optString("codec")?.ifBlank {
+                                part.optString("container").ifBlank {
+                                    media?.optString("codec")?.ifBlank { media.optString("container") }
+                                }
+                            },
+                            transcodedCodec = transcodedCodec,
+                            bitrateKbps = bitrateKbps,
+                            sampleRateHz = sampleRateHz,
+                            bitDepth = bitDepth,
+                            sourcePath = part?.optString("key")?.ifBlank { null }
+                        )
+    }
+
+    private fun JSONObject.numericValue(key: String): Int? =
+        optString(key).toDoubleOrNull()?.toInt()
+
+    private fun audioBitrateKbps(media: JSONObject?, part: JSONObject?, transcode: JSONObject?): Int? =
+        sequenceOf(
+            transcode?.numericValue("audioBitrate"),
+            part?.numericValue("bitrate"),
+            media?.numericValue("bitrate")
+        ).firstOrNull { it != null && it > 0 }
+
+    private fun audioQuality(media: JSONObject?, part: JSONObject?): Pair<Int?, Int?> {
+        val sampleRateHz = sequenceOf(
+            part?.numericValue("samplingRate"),
+            part?.numericValue("sampleRate"),
+            media?.numericValue("samplingRate"),
+            media?.numericValue("sampleRate")
+        ).firstOrNull { it != null && it > 0 }?.let { rate ->
+            if (rate < 1000) rate * 1000 else rate
+        }
+        val bitDepth = sequenceOf(
+            part?.numericValue("bitDepth"),
+            part?.numericValue("bitsPerSample"),
+            media?.numericValue("bitDepth"),
+            media?.numericValue("bitsPerSample")
+        ).firstOrNull { it != null && it > 0 }
+        return sampleRateHz to bitDepth
+    }
+
+    suspend fun fetchFlacQuality(baseUrl: String, authToken: String, sourcePath: String): Result<AudioQuality?> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val endpoint = sourcePath.toHttpUrlOrNull()?.newBuilder()
+                    ?: baseUrl.trimEnd('/').plus(sourcePath).toHttpUrlOrNull()?.newBuilder()
+                    ?: return@runCatching null
+                endpoint.addQueryParameter("X-Plex-Token", authToken)
+                val request = Request.Builder()
+                    .url(endpoint.build())
+                    .header("Range", "bytes=0-65535")
+                    .get()
+                    .build()
+                PlexApiClient.httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    parseFlacStreamInfo(response.body?.bytes() ?: return@use null)
+                }
+            }
+        }
+
+    internal fun parseFlacStreamInfo(bytes: ByteArray): AudioQuality? {
+        if (bytes.size < 4 || bytes[0] != 'f'.code.toByte() || bytes[1] != 'L'.code.toByte() ||
+            bytes[2] != 'a'.code.toByte() || bytes[3] != 'C'.code.toByte()
+        ) return null
+
+        var offset = 4
+        while (offset + 4 <= bytes.size) {
+            val header = bytes[offset].toInt() and 0xFF
+            val blockType = header and 0x7F
+            val blockLength = ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+                ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+                (bytes[offset + 3].toInt() and 0xFF)
+            offset += 4
+            if (blockType == 0 && blockLength >= 18 && offset + blockLength <= bytes.size) {
+                val audioInfoOffset = offset + 10
+                val sampleRate = ((bytes[audioInfoOffset].toInt() and 0xFF) shl 12) or
+                    ((bytes[audioInfoOffset + 1].toInt() and 0xFF) shl 4) or
+                    ((bytes[audioInfoOffset + 2].toInt() and 0xF0) ushr 4)
+                val bitDepth = ((((bytes[audioInfoOffset + 2].toInt() and 0x01) shl 4) or
+                    ((bytes[audioInfoOffset + 3].toInt() and 0xF0) ushr 4)) + 1)
+                return AudioQuality(sampleRate, bitDepth)
+            }
+            offset += blockLength
+        }
+        return null
+    }
 
     suspend fun terminateSession(baseUrl: String, authToken: String, sessionId: String, reason: String): Result<Unit> =
         withContext(Dispatchers.IO) {
@@ -65,7 +168,7 @@ class NowPlayingRepository {
                 val request = Request.Builder()
                     .url(endpoint)
                     .header("X-Plex-Token", authToken)
-                    .post(okhttp3.RequestBody.create(null, ByteArray(0)))
+                    .post(ByteArray(0).toRequestBody(null))
                     .build()
 
                 PlexApiClient.httpClient.newCall(request).execute().use { response ->
@@ -105,7 +208,17 @@ class NowPlayingRepository {
 
                     TrackContext(
                         album = album,
-                        year = parentYear ?: year ?: releaseYear
+                        year = parentYear ?: year ?: releaseYear,
+                        sampleRateHz = audioQuality(
+                            item.optJSONArray("Media")?.optJSONObject(0),
+                            item.optJSONArray("Media")?.optJSONObject(0)?.optJSONArray("Part")?.optJSONObject(0)
+                        ).first,
+                        bitDepth = audioQuality(
+                            item.optJSONArray("Media")?.optJSONObject(0),
+                            item.optJSONArray("Media")?.optJSONObject(0)?.optJSONArray("Part")?.optJSONObject(0)
+                        ).second,
+                        sourcePath = item.optJSONArray("Media")?.optJSONObject(0)
+                            ?.optJSONArray("Part")?.optJSONObject(0)?.optString("key")?.ifBlank { null }
                     )
                 }
             }

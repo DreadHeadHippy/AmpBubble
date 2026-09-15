@@ -216,6 +216,11 @@ class PlexampNotificationListener : NotificationListenerService() {
             true
         }
 
+        fun seekTo(positionMs: Long): Boolean = withTransportControls { controls, _ ->
+            controls.seekTo(positionMs.coerceAtLeast(0L))
+            true
+        }
+
         fun stopPlayback(): Boolean = withTransportControls { controls, controller ->
             val actions = controller.playbackState?.actions ?: 0L
             val canStop = (actions and android.media.session.PlaybackState.ACTION_STOP) != 0L

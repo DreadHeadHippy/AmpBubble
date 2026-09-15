@@ -33,8 +33,56 @@ data class PlexSession(
     val thumbPath: String?,
     val year: Int?,
     val durationMs: Long?,
-    val userRating: Float?
+    val userRating: Float?,
+    val originalCodec: String? = null,
+    val transcodedCodec: String? = null,
+    val bitrateKbps: Int? = null,
+    val sampleRateHz: Int? = null,
+    val bitDepth: Int? = null,
+    val sourcePath: String? = null
 )
+
+fun formatCodecLabel(
+    originalCodec: String?,
+    transcodedCodec: String?,
+    bitrateKbps: Int? = null,
+    sampleRateHz: Int? = null,
+    bitDepth: Int? = null
+): String? {
+    val original = originalCodec?.trim()?.takeIf { it.isNotEmpty() }?.uppercase()
+    val transcoded = transcodedCodec?.trim()?.takeIf { it.isNotEmpty() }?.uppercase()
+    val sourceDetails = when {
+        sampleRateHz != null && sampleRateHz > 0 && bitDepth != null && bitDepth > 0 ->
+            "${sampleRateHz / 1000}/${bitDepth}"
+        sampleRateHz != null && sampleRateHz > 0 -> "${sampleRateHz / 1000}"
+        bitDepth != null && bitDepth > 0 -> bitDepth.toString()
+        else -> null
+    }
+    val source = original?.let { codec -> sourceDetails?.let { "$codec $it" } ?: codec }
+    val codec = when {
+        source == null -> transcoded
+        transcoded == null || transcoded == original -> source
+        else -> "$source -> $transcoded"
+    }
+    return codec?.let { label ->
+        val bitrate = bitrateKbps?.takeIf { it > 0 }?.let { " · ${it} kbps" }.orEmpty()
+        "$label$bitrate"
+    }
+}
+
+fun formatBitrateLabel(bitrateKbps: Int?): String? =
+    bitrateKbps?.takeIf { it > 0 }?.toString()
+
+fun formatSourceQualityLabel(sampleRateHz: Int?, bitDepth: Int?): String? {
+    val sampleRate = sampleRateHz?.takeIf { it > 0 }?.let { it / 1000 }
+    val depth = bitDepth?.takeIf { it > 0 }
+    return when {
+        sampleRate != null && depth != null -> "$sampleRate/$depth"
+        sampleRate != null -> sampleRate.toString()
+        depth != null -> depth.toString()
+        else -> null
+    }
+}
 
 /** Track metadata as reported by Android's MediaController for the Plexamp notification. */
 data class NowPlayingMetadata(

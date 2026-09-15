@@ -12,3 +12,4 @@ keystore.properties
 .DS_Store
 *.png
 *.PNG
+dropbox_crashes.txt

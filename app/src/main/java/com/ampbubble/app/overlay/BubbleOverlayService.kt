@@ -76,6 +76,11 @@ class BubbleOverlayService : LifecycleService() {
     private var trackArtistState by mutableStateOf<String?>(null)
     private var trackAlbumState by mutableStateOf<String?>(null)
     private var trackYearState by mutableStateOf<Int?>(null)
+    private var originalCodecState by mutableStateOf<String?>(null)
+    private var transcodedCodecState by mutableStateOf<String?>(null)
+    private var bitrateKbpsState by mutableStateOf<Int?>(null)
+    private var sampleRateHzState by mutableStateOf<Int?>(null)
+    private var bitDepthState by mutableStateOf<Int?>(null)
     private var isPlayingState by mutableStateOf(false)
     private var playbackPositionMsState by mutableStateOf<Long?>(null)
     private var playbackPositionUpdatedAtMsState by mutableStateOf<Long?>(null)
@@ -257,6 +262,11 @@ class BubbleOverlayService : LifecycleService() {
                     trackArtist = trackArtistState,
                     trackAlbum = trackAlbumState,
                     trackYear = trackYearState,
+                    originalCodec = originalCodecState,
+                    transcodedCodec = transcodedCodecState,
+                    bitrateKbps = bitrateKbpsState,
+                    sampleRateHz = sampleRateHzState,
+                    bitDepth = bitDepthState,
                     trackArtUrl = currentTrackArtUrlState,
                     trackArtBitmap = currentTrackArtBitmapState,
                     isPlaying = isPlayingState,
@@ -271,6 +281,7 @@ class BubbleOverlayService : LifecycleService() {
                     onPrevious = ::skipToPrevious,
                     onSeekForward = { seekBy(10_000L) },
                     onSeekBack = { seekBy(-10_000L) },
+                    onSeekTo = ::seekTo,
                     ratingPresets = ratingPresetsState,
                     onPresetRating = ::submitRating,
                     showRecentRatings = showRecentRatingsState,
@@ -431,8 +442,6 @@ class BubbleOverlayService : LifecycleService() {
 
                 trackTitleState = metadata.title ?: "Nothing playing"
                 trackArtistState = metadata.artist
-                trackAlbumState = metadata.album
-                trackYearState = metadata.year
                 isPlayingState = metadata.isPlaying
                 playbackPositionMsState = metadata.playbackPositionMs
                 playbackPositionUpdatedAtMsState = metadata.playbackPositionUpdatedAtMs
@@ -440,12 +449,21 @@ class BubbleOverlayService : LifecycleService() {
                 panelAccentColorState = metadata.accentColorArgb?.let { Color(it) } ?: Color(0xFFE5A00D)
                 currentTrackArtBitmapState = metadata.albumArtBitmap?.asImageBitmap()
                 val fingerprint = buildTrackFingerprint(metadata.title, metadata.artist, metadata.durationMs)
-                if (fingerprint != currentTrackFingerprint) {
+                val isNewTrack = fingerprint != currentTrackFingerprint
+                // Notification metadata rarely carries album/year; don't let repeat republishes for the same track null out a Plex API-resolved value.
+                trackAlbumState = metadata.album ?: trackAlbumState.takeIf { !isNewTrack }
+                trackYearState = metadata.year ?: trackYearState.takeIf { !isNewTrack }
+                if (isNewTrack) {
                     currentTrackFingerprint = fingerprint
                     resolvedRatingKey = null
                     ratingState = 0f
                     currentTrackThumbPath = null
                     currentTrackArtUrlState = null
+                    originalCodecState = null
+                    transcodedCodecState = null
+                    bitrateKbpsState = null
+                    sampleRateHzState = null
+                    bitDepthState = null
                     resolveRatingKeyAndPrefillRating(metadata.title, metadata.artist, metadata.album, metadata.year, metadata.durationMs)
                 }
             }
@@ -502,16 +520,36 @@ class BubbleOverlayService : LifecycleService() {
         ensureRatingCacheLoaded()
         var albumName = session.parentTitle
         var year = session.year
-        if (albumName.isNullOrBlank() || year == null) {
+        var sampleRateHz = session.sampleRateHz
+        var bitDepth = session.bitDepth
+        var sourcePath = session.sourcePath
+        if (albumName.isNullOrBlank() || year == null || sampleRateHz == null || bitDepth == null) {
             val context = nowPlayingRepository.fetchTrackContext(resolvedBase, token, session.ratingKey).getOrNull()
             if (albumName.isNullOrBlank()) albumName = context?.album
             if (year == null) year = context?.year
+            if (sampleRateHz == null) sampleRateHz = context?.sampleRateHz
+            if (bitDepth == null) bitDepth = context?.bitDepth
+            if (sourcePath == null) sourcePath = context?.sourcePath
+        }
+        if ((sampleRateHz == null || bitDepth == null) &&
+            session.originalCodec.equals("flac", ignoreCase = true) && !sourcePath.isNullOrBlank()
+        ) {
+            val quality = nowPlayingRepository.fetchFlacQuality(resolvedBase, token, sourcePath!!).getOrNull()
+            if (quality != null) {
+                sampleRateHz = quality.sampleRateHz
+                bitDepth = quality.bitDepth
+            }
         }
         currentTrackFingerprint = buildTrackFingerprint(session.title, session.grandparentTitle, session.durationMs)
         trackTitleState = session.title
         trackArtistState = session.grandparentTitle
         trackAlbumState = albumName
         trackYearState = year
+        originalCodecState = session.originalCodec
+        transcodedCodecState = session.transcodedCodec
+        bitrateKbpsState = session.bitrateKbps
+        sampleRateHzState = sampleRateHz
+        bitDepthState = bitDepth
         trackDurationMsState = session.durationMs
         isPlayingState = true
         playbackPositionMsState = null
@@ -546,16 +584,34 @@ class BubbleOverlayService : LifecycleService() {
                 if (match != null) {
                     var resolvedAlbum = album ?: match.parentTitle
                     var resolvedYear = year ?: match.year
-                    if (resolvedAlbum.isNullOrBlank() || resolvedYear == null) {
+                    var sourcePath = match.sourcePath
+                    if (resolvedAlbum.isNullOrBlank() || resolvedYear == null || match.sampleRateHz == null || match.bitDepth == null) {
                         val context = nowPlayingRepository.fetchTrackContext(resolvedBase, token, match.ratingKey).getOrNull()
                         if (resolvedAlbum.isNullOrBlank()) resolvedAlbum = context?.album
                         if (resolvedYear == null) resolvedYear = context?.year
+                        if (match.sampleRateHz == null) sampleRateHzState = context?.sampleRateHz
+                        if (match.bitDepth == null) bitDepthState = context?.bitDepth
+                        if (sourcePath == null) sourcePath = context?.sourcePath
+                    }
+                    if ((sampleRateHzState == null || bitDepthState == null) &&
+                        match.originalCodec.equals("flac", ignoreCase = true) && !sourcePath.isNullOrBlank()
+                    ) {
+                        val quality = nowPlayingRepository.fetchFlacQuality(resolvedBase, token, sourcePath!!).getOrNull()
+                        if (quality != null) {
+                            sampleRateHzState = quality.sampleRateHz
+                            bitDepthState = quality.bitDepth
+                        }
                     }
                     if (!isCurrentResolution(fingerprint, resolutionVersion)) return@launch
 
                     resolvedRatingKey = match.ratingKey
                     trackAlbumState = resolvedAlbum
                     trackYearState = resolvedYear
+                    originalCodecState = match.originalCodec
+                    transcodedCodecState = match.transcodedCodec
+                    bitrateKbpsState = match.bitrateKbps
+                    sampleRateHzState = sampleRateHzState ?: match.sampleRateHz
+                    bitDepthState = bitDepthState ?: match.bitDepth
                     currentTrackThumbPath = match.thumbPath
                     currentTrackArtUrlState = buildMediaUrl(resolvedBase, token, match.thumbPath)
                     ratingState = cachedRatingByKey[match.ratingKey] ?: (match.userRating ?: 0f) / 2f
@@ -748,11 +804,22 @@ class BubbleOverlayService : LifecycleService() {
         }
     }
 
+    private fun seekTo(positionMs: Long) {
+        if (!PlexampNotificationListener.seekTo(positionMs)) {
+            statusMessageState = "Playback control unavailable"
+        }
+    }
+
     private fun clearNowPlayingState() {
         trackTitleState = "Nothing playing"
         trackArtistState = null
         trackAlbumState = null
         trackYearState = null
+        originalCodecState = null
+        transcodedCodecState = null
+        bitrateKbpsState = null
+        sampleRateHzState = null
+        bitDepthState = null
         isPlayingState = false
         playbackPositionMsState = null
         playbackPositionUpdatedAtMsState = null

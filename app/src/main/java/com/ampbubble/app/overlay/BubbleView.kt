@@ -38,8 +38,10 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.foundation.Image
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
@@ -61,6 +63,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import com.ampbubble.app.plex.formatBitrateLabel
+import com.ampbubble.app.plex.formatCodecLabel
+import com.ampbubble.app.plex.formatSourceQualityLabel
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.ImageBitmap
 import com.ampbubble.app.R
@@ -105,6 +110,11 @@ fun RatingPanelContent(
     trackArtist: String?,
     trackAlbum: String?,
     trackYear: Int?,
+    originalCodec: String? = null,
+    transcodedCodec: String? = null,
+    bitrateKbps: Int? = null,
+    sampleRateHz: Int? = null,
+    bitDepth: Int? = null,
     trackArtUrl: String?,
     trackArtBitmap: ImageBitmap? = null,
     isPlaying: Boolean,
@@ -119,6 +129,7 @@ fun RatingPanelContent(
     onPrevious: () -> Unit,
     onSeekForward: () -> Unit,
     onSeekBack: () -> Unit,
+    onSeekTo: (Long) -> Unit,
     ratingPresets: List<Float>,
     onPresetRating: (Float) -> Unit,
     showRecentRatings: Boolean,
@@ -141,6 +152,8 @@ fun RatingPanelContent(
         (trackYear ?: 0) > 0 -> "(${trackYear})"
         else -> null
     }
+    val codecLine = formatCodecLabel(originalCodec, transcodedCodec)
+    val bitrateLine = formatSourceQualityLabel(sampleRateHz, bitDepth) ?: formatBitrateLabel(bitrateKbps)
 
     Column(
         modifier = Modifier
@@ -271,7 +284,8 @@ fun RatingPanelContent(
             playbackPositionUpdatedAtMs = playbackPositionUpdatedAtMs,
             durationMs = durationMs,
             isPlaying = isPlaying,
-            accentColor = accentColor
+            accentColor = accentColor,
+            onSeekTo = onSeekTo
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -311,13 +325,52 @@ fun RatingPanelContent(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        StarRatingControl(
-            rating = rating,
-            onRatingPreview = onRatingPreview,
-            onRatingCommit = onRatingCommit,
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            filledColor = accentColor
-        )
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(40.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (codecLine != null) {
+                    Text(
+                        text = codecLine,
+                        color = Color(0xFF7F8798),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            StarRatingControl(
+                rating = rating,
+                onRatingPreview = onRatingPreview,
+                onRatingCommit = onRatingCommit,
+                modifier = Modifier.weight(1f),
+                starSizeDp = 28,
+                filledColor = accentColor
+            )
+            Box(
+                modifier = Modifier
+                    .width(40.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                if (bitrateLine != null) {
+                    Text(
+                        text = bitrateLine,
+                        color = Color(0xFF7F8798),
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
 
         if (ratingPresets.isNotEmpty() || saveConfirmed) {
             Spacer(modifier = Modifier.height(10.dp))
@@ -443,13 +496,15 @@ fun RatingPanelContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlaybackProgressIndicator(
     playbackPositionMs: Long?,
     playbackPositionUpdatedAtMs: Long?,
     durationMs: Long?,
     isPlaying: Boolean,
-    accentColor: Color
+    accentColor: Color,
+    onSeekTo: (Long) -> Unit
 ) {
     if (playbackPositionMs == null || durationMs == null || durationMs <= 0L) return
 
@@ -467,6 +522,8 @@ private fun PlaybackProgressIndicator(
     if (!isPlaying) displayedPositionMs = playbackPositionMs.coerceIn(0L, durationMs)
 
     val progress = (displayedPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    var scrubProgress by remember { mutableStateOf<Float?>(null) }
+    val visibleProgress = scrubProgress ?: progress
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
         val showLabels = maxWidth >= 260.dp
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -479,11 +536,33 @@ private fun PlaybackProgressIndicator(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
             }
-            LinearProgressIndicator(
-                progress = { progress },
-                color = accentColor,
-                trackColor = Color(0x33FFFFFF),
-                modifier = Modifier.weight(1f).height(3.dp)
+            Slider(
+                value = visibleProgress,
+                onValueChange = { scrubProgress = it },
+                onValueChangeFinished = {
+                    scrubProgress?.let { onSeekTo((it * durationMs).toLong()) }
+                    scrubProgress = null
+                },
+                colors = SliderDefaults.colors(
+                    activeTrackColor = accentColor,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.16f)
+                ),
+                thumb = {},
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        modifier = Modifier.height(4.dp),
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = accentColor,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.16f)
+                        ),
+                        thumbTrackGapSize = 0.dp,
+                        drawStopIndicator = null
+                    )
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(20.dp)
             )
             if (showLabels) {
                 Spacer(modifier = Modifier.width(6.dp))
