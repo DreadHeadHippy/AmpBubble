@@ -1,4 +1,4 @@
-[![VirusTotal scan](https://img.shields.io/badge/VirusTotal-scan%20latest%20release-394EFF?logo=virustotal&logoColor=white)](https://github.com/DreadHeadHippy/AmpBubble/releases/latest/download/app-release.apk)
+[![VirusTotal scan](https://img.shields.io/badge/VirusTotal-scan%20latest%20release-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/fa0aecfdfc74585e55d2132abbb4071c5d5b1a020036b374c2ec74a2ae479370/detection)
 
 # AmpBubble
 
