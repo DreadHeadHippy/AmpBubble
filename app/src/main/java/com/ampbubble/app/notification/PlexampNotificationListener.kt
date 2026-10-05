@@ -69,6 +69,14 @@ class PlexampNotificationListener : NotificationListenerService() {
         }
     }
 
+    override fun onListenerDisconnected() {
+        controller?.unregisterCallback(controllerCallback)
+        controller = null
+        activeController = null
+        _nowPlaying.value = null
+        requestRebind(applicationContext)
+    }
+
     @Suppress("DEPRECATION")
     private fun extractMediaSessionToken(notification: Notification): MediaSession.Token? {
         return if (android.os.Build.VERSION.SDK_INT >= 33) {

@@ -1,10 +1,10 @@
-[![VirusTotal scan](https://img.shields.io/badge/VirusTotal-scan%20latest%20release-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/fa0aecfdfc74585e55d2132abbb4071c5d5b1a020036b374c2ec74a2ae479370/detection)
+[![Latest release](https://img.shields.io/github/v/release/DreadHeadHippy/AmpBubble?label=download%20latest)](https://github.com/DreadHeadHippy/AmpBubble/releases/latest)
 
 # AmpBubble
 
 AmpBubble is an Android overlay app that lets you rate the currently playing Plexamp track without leaving what you are doing. It provides a fully opaque floating bubble, an expandable now-playing panel, quick star rating, queued retry for failed ratings, and settings for reliability and UX.
 
-Current release: `0.3.8` (version code `11`).
+Current release: [`0.3.9` (version code `12`)](https://github.com/DreadHeadHippy/AmpBubble/releases/tag/v0.3.9).
 
 AmpBubble is an independent project and is not affiliated with Plex or Plexamp.
 
@@ -30,6 +30,8 @@ AmpBubble is an independent project and is not affiliated with Plex or Plexamp.
 - FLAC quality is read from the file's `STREAMINFO` header using a small ranged request when Plex's JSON metadata does not include it; it may appear shortly after the track is matched.
 - The panel opens above the bubble when space below is insufficient, avoiding a visible position jump near the bottom edge of the screen.
 - If the positioned panel would still cover the bubble, the bubble slides just clear of the panel and returns to its original spot once the panel closes.
+- The bubble stays within the display's safe area while dragging and is repositioned if the screen rotates, keeping it clear of system bars and cutouts.
+- If Plexamp's notification listener disconnects or omits playback state, AmpBubble reconnects it and checks active Plex sessions to restore now-playing information.
 - A brief "Rating saved" confirmation flashes next to Quick presets after a successful rating, then disappears.
 
 ## Tech Stack
@@ -141,11 +143,12 @@ If overlay permission is missing when Bubble is enabled, the app opens Android's
 
 ## Playback and Metadata Model
 
-The app distinguishes between playing, paused, and stopped using MediaController playback state from Plexamp notification sessions.
+The app distinguishes between playing, paused, and stopped using MediaController playback state from Plexamp notification sessions. If that state is missing or the listener disconnects, a periodic Plex session check can restore the active track.
 
 - Paused retains metadata in the panel.
 - Stopped clears active track state.
 - No metadata yields waiting/idle behavior.
+- Missing playback state or a disconnected notification listener triggers Plex session fallback and a listener rebind.
 
 ## Troubleshooting
 
@@ -161,6 +164,8 @@ The app distinguishes between playing, paused, and stopped using MediaController
 - Verify notification listener access is granted.
 - Confirm Plexamp is producing active media notifications.
 - Wait briefly after a track change for the background Plex session match to complete.
+- If notification access becomes stale, the app periodically checks Plex sessions while the bubble is enabled; verify that the Plex server is reachable and signed-in credentials are valid.
+- The bubble is constrained to the usable display area; rotate the screen or drag it away from system bars if it is difficult to reach.
 
 ### Ratings do not save
 

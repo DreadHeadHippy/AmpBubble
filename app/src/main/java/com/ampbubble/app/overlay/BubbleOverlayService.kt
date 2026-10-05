@@ -7,12 +7,14 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.media.session.PlaybackState
 import android.provider.Settings
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +43,7 @@ import com.ampbubble.app.plex.NowPlayingMetadata
 import com.ampbubble.app.plex.NowPlayingRepository
 import com.ampbubble.app.plex.PlexRatingRepository
 import com.ampbubble.app.plex.PlexSession
+import com.ampbubble.app.plex.needsPlexSessionFallback
 import androidx.lifecycle.LifecycleService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -157,6 +160,12 @@ class BubbleOverlayService : LifecycleService() {
         super.onDestroy()
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!::bubbleView.isInitialized || !bubbleView.isAttachedToWindow) return
+        bubbleView.post { constrainBubbleToSafeArea() }
+    }
+
     // --- Window setup -----------------------------------------------------
 
     private fun overlayWindowType() =
@@ -184,8 +193,12 @@ class BubbleOverlayService : LifecycleService() {
                                 onDragEnd = { snapBubbleToNearestEdge() }
                             ) { change, dragAmount ->
                                 change.consume()
-                                bubbleLayoutParams.x += dragAmount.x.roundToInt()
-                                bubbleLayoutParams.y += dragAmount.y.roundToInt()
+                                val (x, y) = clampBubblePosition(
+                                    bubbleLayoutParams.x + dragAmount.x.roundToInt(),
+                                    bubbleLayoutParams.y + dragAmount.y.roundToInt()
+                                )
+                                bubbleLayoutParams.x = x
+                                bubbleLayoutParams.y = y
                                 windowManager.updateViewLayout(bubbleView, bubbleLayoutParams)
                             }
                         }
@@ -197,7 +210,7 @@ class BubbleOverlayService : LifecycleService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayWindowType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -207,24 +220,71 @@ class BubbleOverlayService : LifecycleService() {
 
         lifecycleScope.launch {
             val (savedX, savedY) = settingsStoreBubblePositionOrDefault()
-            bubbleLayoutParams.x = savedX
-            bubbleLayoutParams.y = savedY
-            runCatching { windowManager.addView(bubbleView, bubbleLayoutParams) }
+            val (x, y) = clampBubblePosition(savedX, savedY)
+            bubbleLayoutParams.x = x
+            bubbleLayoutParams.y = y
+            val added = runCatching { windowManager.addView(bubbleView, bubbleLayoutParams) }
                 .onFailure {
                     lifecycleScope.launch { settingsStore.addDiagnosticEvent("overlay:add_failed") }
                     stopSelf()
                 }
+                .isSuccess
+            if (added) bubbleView.post { constrainBubbleToSafeArea() }
         }
     }
 
     private suspend fun settingsStoreBubblePositionOrDefault(): Pair<Int, Int> =
         runCatching { settingsStore.bubblePosition.first() }.getOrDefault(0 to 300)
 
-    private fun snapBubbleToNearestEdge() {
+    private fun clampBubblePosition(x: Int, y: Int): Pair<Int, Int> {
         val metrics = windowManager.currentWindowMetrics
-        val screenWidth = metrics.bounds.width()
-        val bubbleWidth = bubbleView.width.takeIf { it > 0 } ?: 150
-        val targetX = if (bubbleLayoutParams.x + bubbleWidth / 2 < screenWidth / 2) 0 else screenWidth - bubbleWidth
+        val insets = metrics.windowInsets.getInsets(
+            WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+        )
+        val fallbackSize = (56 * resources.displayMetrics.density).roundToInt()
+        val bubbleWidth = bubbleView.width.takeIf { it > 0 } ?: fallbackSize
+        val bubbleHeight = bubbleView.height.takeIf { it > 0 } ?: fallbackSize
+        val safeAreaMargin = (8 * resources.displayMetrics.density).roundToInt()
+        return clampBubblePosition(
+            x,
+            y,
+            bubbleWidth,
+            bubbleHeight,
+            BubbleSafeBounds(
+                left = insets.left,
+                top = insets.top + safeAreaMargin,
+                right = metrics.bounds.width() - insets.right,
+                bottom = metrics.bounds.height() - insets.bottom
+            )
+        )
+    }
+
+    private fun constrainBubbleToSafeArea() {
+        val (x, y) = clampBubblePosition(bubbleLayoutParams.x, bubbleLayoutParams.y)
+        if (x == bubbleLayoutParams.x && y == bubbleLayoutParams.y) return
+        bubbleLayoutParams.x = x
+        bubbleLayoutParams.y = y
+        runCatchingSilently { windowManager.updateViewLayout(bubbleView, bubbleLayoutParams) }
+        lifecycleScope.launch { settingsStore.setBubblePosition(x, y) }
+    }
+
+    private fun snapBubbleToNearestEdge() {
+        val (safeX, safeY) = clampBubblePosition(bubbleLayoutParams.x, bubbleLayoutParams.y)
+        bubbleLayoutParams.x = safeX
+        bubbleLayoutParams.y = safeY
+        val metrics = windowManager.currentWindowMetrics
+        val insets = metrics.windowInsets.getInsets(
+            WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+        )
+        val fallbackSize = (56 * resources.displayMetrics.density).roundToInt()
+        val bubbleWidth = bubbleView.width.takeIf { it > 0 } ?: fallbackSize
+        val leftX = insets.left
+        val rightX = (metrics.bounds.width() - insets.right - bubbleWidth).coerceAtLeast(leftX)
+        val targetX = if (bubbleLayoutParams.x + bubbleWidth / 2 < metrics.bounds.width() / 2) {
+            leftX
+        } else {
+            rightX
+        }
 
         ValueAnimator.ofInt(bubbleLayoutParams.x, targetX).apply {
             duration = 200
@@ -235,7 +295,7 @@ class BubbleOverlayService : LifecycleService() {
             start()
         }
         lifecycleScope.launch {
-            settingsStore.setBubblePosition(targetX, bubbleLayoutParams.y)
+            settingsStore.setBubblePosition(targetX, safeY)
         }
     }
 
@@ -354,8 +414,9 @@ class BubbleOverlayService : LifecycleService() {
         panelParams: WindowManager.LayoutParams,
         screenHeight: Int
     ) {
-        val bubbleWidth = bubbleView.width.takeIf { it > 0 } ?: 150
-        val bubbleHeight = bubbleView.height.takeIf { it > 0 } ?: 150
+        val fallbackSize = (56 * resources.displayMetrics.density).roundToInt()
+        val bubbleWidth = bubbleView.width.takeIf { it > 0 } ?: fallbackSize
+        val bubbleHeight = bubbleView.height.takeIf { it > 0 } ?: fallbackSize
         val bubbleLeft = bubbleLayoutParams.x
         val bubbleTop = bubbleLayoutParams.y
         val bubbleRight = bubbleLeft + bubbleWidth
@@ -384,9 +445,10 @@ class BubbleOverlayService : LifecycleService() {
             aboveY >= 0 -> aboveY
             else -> bubbleTop
         }
+        val (_, safeTargetY) = clampBubblePosition(bubbleLeft, targetY)
 
-        if (targetY != bubbleTop) {
-            bubbleLayoutParams.y = targetY
+        if (safeTargetY != bubbleTop) {
+            bubbleLayoutParams.y = safeTargetY
             runCatchingSilently { windowManager.updateViewLayout(bubbleView, bubbleLayoutParams) }
         }
     }
@@ -394,8 +456,9 @@ class BubbleOverlayService : LifecycleService() {
     /** Reverts the bubble to its pre-menu position once the panel is dismissed. */
     private fun restoreBubbleFromPanelOverlap() {
         val originalY = bubblePreMenuY ?: return
-        bubbleLayoutParams.x = bubblePreMenuX ?: bubbleLayoutParams.x
-        bubbleLayoutParams.y = originalY
+        val (x, y) = clampBubblePosition(bubblePreMenuX ?: bubbleLayoutParams.x, originalY)
+        bubbleLayoutParams.x = x
+        bubbleLayoutParams.y = y
         runCatchingSilently { windowManager.updateViewLayout(bubbleView, bubbleLayoutParams) }
         bubblePreMenuX = null
         bubblePreMenuY = null
@@ -497,16 +560,20 @@ class BubbleOverlayService : LifecycleService() {
                 if (!settingsStore.bubbleEnabled.first()) continue
 
                 val metadata = PlexampNotificationListener.nowPlaying.value
-                val notificationStopped = metadata == null ||
-                    metadata.playbackState == PlaybackState.STATE_STOPPED ||
-                    metadata.playbackState == PlaybackState.STATE_NONE
-                if (!notificationStopped) continue
+                if (!metadata.needsPlexSessionFallback()) continue
 
                 PlexampNotificationListener.requestRebind(applicationContext)
 
                 val resolvedBase = currentBaseUrl() ?: continue
                 val token = currentAuthToken() ?: continue
-                val session = nowPlayingRepository.fetchActiveSessions(resolvedBase, token).getOrNull()?.firstOrNull()
+                val sessionsResult = nowPlayingRepository.fetchActiveSessions(resolvedBase, token)
+                if (sessionsResult.isFailure) {
+                    settingsStore.addDiagnosticEvent("fallback_poll:session_lookup_failed")
+                    continue
+                }
+                val sessions = sessionsResult.getOrNull().orEmpty()
+                val session = metadata?.let { nowPlayingRepository.matchSession(it, sessions) }
+                    ?: sessions.firstOrNull()
                 if (session != null) {
                     applySessionAsNowPlaying(session, resolvedBase, token)
                     settingsStore.addDiagnosticEvent("fallback_poll:matched_session")

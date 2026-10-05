@@ -99,6 +99,12 @@ data class NowPlayingMetadata(
     val albumArtBitmap: android.graphics.Bitmap? = null
 )
 
+internal fun NowPlayingMetadata?.needsPlexSessionFallback(): Boolean {
+    val state = this?.playbackState ?: return true
+    return state == android.media.session.PlaybackState.STATE_STOPPED ||
+        state == android.media.session.PlaybackState.STATE_NONE
+}
+
 /** A now-playing track resolved to a Plex ratingKey, ready to be rated. */
 data class ResolvedTrack(
     val ratingKey: String,
